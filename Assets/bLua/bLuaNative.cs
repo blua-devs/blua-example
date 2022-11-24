@@ -57,6 +57,10 @@ public class bLuaNativeEditor : Editor
     {
         DrawDefaultInspector();
 
+        if (GUILayout.Button("Init"))
+        {
+            bLuaNative.instance.Init();
+        }
         if (GUILayout.Button("Run Unit Tests"))
         {
             bLuaNative.instance.RunUnitTests();
@@ -206,11 +210,14 @@ public class bLuaNative : MonoBehaviour
     public bLua.bLuaValue FullLookup(bLua.bLuaValue obj, string key)
     {
         bLua.bLuaValue fn;
+        /*
         if (_lookups.TryGetValue(key, out fn) == false)
         {
             fn = script.DoBuffer("lookup", $"return function(obj) return obj.{key} end");
             _lookups.Add(key, fn);
         }
+        */
+        fn = script.DoBuffer("lookup", $"return function(obj) return obj.{key} end");
 
         return script.Call(fn, obj);
     }
@@ -979,7 +986,6 @@ public class bLuaNative : MonoBehaviour
     static public Unity.Profiling.ProfilerMarker s_profileLuaCall = new Unity.Profiling.ProfilerMarker("Lua.Call");
     static public Unity.Profiling.ProfilerMarker s_profileLuaCallInner = new Unity.Profiling.ProfilerMarker("Lua.CallInner");
 
-
 #if UNITY_EDITOR
     private void OnValidate()
     {
@@ -1039,17 +1045,21 @@ public class bLuaNative : MonoBehaviour
         if (script != null)
         {
             script.Close();
+            script = null;
         }
-        bLuaNative.script = new Script();
 
-        _forcegc = bLuaNative.script.DoString(@"return function() collectgarbage() end");
+        _lookups.Clear();
 
-        bLuaNative.script.DoString(@"builtin_coroutines = {}");
+        script = new Script();
+
+        _forcegc = script.DoString(@"return function() collectgarbage() end");
+
+        script.DoString(@"builtin_coroutines = {}");
 
         lua_pushcfunction(Luaprint);
         lua_setglobal(script._state, "print");
 
-        _callco = bLuaNative.script.DoBuffer("callco", @"return function(fn, a, b, c, d, e, f, g, h)
+        _callco = script.DoBuffer("callco", @"return function(fn, a, b, c, d, e, f, g, h)
     local co = coroutine.create(fn)
     local res, error = coroutine.resume(co, a, b, c, d, e, f, g, h)
     print('COROUTINE:: call co: %s -> %s -> %s', type(co), type(fn), coroutine.status(co))
@@ -1061,7 +1071,7 @@ public class bLuaNative : MonoBehaviour
     end
 end");
 
-        _updateco = bLuaNative.script.DoBuffer("updateco", @"return function()
+        _updateco = script.DoBuffer("updateco", @"return function()
     local allRunning = true
     for _,co in ipairs(builtin_coroutines) do
         local res, error = coroutine.resume(co)
@@ -1264,8 +1274,8 @@ function make_big_table()
     return result
 end
 
-function test_userdata(a)
-    return a.StaticFunction(0) + a.StaticFunction(2,3,4) + a:MyFunction() + a.propertyTest
+function test_userdata(u)
+    return u.StaticFunction(0) + u.StaticFunction(2,3,4) + u:MyFunction() + u.propertyTest
 end
 
 function incr_userdata(a)
@@ -1455,7 +1465,9 @@ end");
         lua_pushcfunction(Luaprint);
         lua_setglobal(script._state, "TestPrint");
 
-        bLuaNative.script.ExecBuffer("co", @"function myco(a, b, c)
+        bLuaNative.script.ExecBuffer("co", @"
+print('testing coroutines! (this will not work properly in editor time) 
+function myco(a, b, c)
     for i=1,5 do
         print('co: ' .. i)
 
