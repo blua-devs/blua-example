@@ -121,6 +121,9 @@ public class bLuaNative : MonoBehaviour
             Close();
         }
 
+        /// <summary>
+        /// Ends the Lua script
+        /// </summary>
         public void Close()
         {
             if (_state != System.IntPtr.Zero)
@@ -130,10 +133,19 @@ public class bLuaNative : MonoBehaviour
             }
         }
 
+        /// <summary>
+        /// Loads a string of Lua code and runs it.
+        /// </summary>
         public bLuaValue DoString(string code)
         {
             return DoBuffer("code", code);
         }
+
+        /// <summary>
+        /// Loads a buffer as a Lua chunk and runs it.
+        /// </summary>
+        /// <param name="name">The chunk name, used for debug information and error messages.</param>
+        /// <param name="text">The Lua code to load.</param>
         public void ExecBuffer(string name, string text, int nresults=0)
         {
             using (s_profileLuaCall.Auto())
@@ -160,12 +172,23 @@ public class bLuaNative : MonoBehaviour
             }
         }
 
+        /// <summary>
+        /// Loads a buffer as a Lua chunk and runs it.
+        /// </summary>
+        /// <param name="name">The chunk name, used for debug information and error messages.</param>
+        /// <param name="text">The Lua code to load.</param>
         public bLua.bLuaValue DoBuffer(string name, string text)
         {
             ExecBuffer(name, text, 1);
             return PopStackIntoValue();
         }
 
+        /// <summary>
+        /// Calls a passed Lua function.
+        /// </summary>
+        /// <param name="fn">The Lua function being called.</param>
+        /// <param name="args">Arguments that will be passed into the called Lua function.</param>
+        /// <returns>The output from the called Lua function.</returns>
         public bLua.bLuaValue Call(bLua.bLuaValue fn, params object[] args)
         {
             using (s_profileLuaCall.Auto())
@@ -1056,7 +1079,7 @@ public class bLuaNative : MonoBehaviour
 
         script.DoString(@"builtin_coroutines = {}");
 
-        lua_pushcfunction(Luaprint);
+        lua_pushcfunction(LuaPrint);
         lua_setglobal(script._state, "print");
 
         _callco = script.DoBuffer("callco", @"return function(fn, a, b, c, d, e, f, g, h)
@@ -1165,7 +1188,7 @@ end");
         return System.Text.UTF8Encoding.UTF8.GetString(b);
     }
 
-    public static int Luaprint(System.IntPtr state)
+    public static int LuaPrint(System.IntPtr state)
     {
         System.Text.StringBuilder sb = new System.Text.StringBuilder();
         int top = lua_gettop(state);
@@ -1351,14 +1374,12 @@ end");
         {
             var userdata = bLuaValue.CreateUserData(new TestUserDataClass() { n = 7 });
             Assert.AreEqual(fn.Call(userdata, "abc:", bLuaValue.CreateString("def")).String, "abc:def");
-
         }
 
         using (bLuaValue fn = GetGlobal("test_varargs"))
         {
             var userdata = bLuaValue.CreateUserData(new TestUserDataClass() { n = 7 });
             Assert.AreEqual(fn.Call(userdata).Number, 20);
-
         }
 
 
@@ -1462,11 +1483,11 @@ end");
 
     public void RunTestCoroutine()
     {
-        lua_pushcfunction(Luaprint);
+        lua_pushcfunction(LuaPrint);
         lua_setglobal(script._state, "TestPrint");
 
         bLuaNative.script.ExecBuffer("co", @"
-print('testing coroutines! (this will not work properly in editor time) 
+print('testing coroutines! (this will not work properly in editor time)')
 function myco(a, b, c)
     for i=1,5 do
         print('co: ' .. i)
