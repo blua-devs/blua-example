@@ -1,4 +1,5 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Assertions;
@@ -8,6 +9,12 @@ namespace bLua
 
     public class bLuaValue : System.IDisposable
     {
+        public static void DeInit()
+        {
+            s_internedStrings.Clear();
+            Array.Clear(s_stringCache, 0, s_stringCache.Length);
+        }
+
 #if UNITY_EDITOR
         public static int nLive = 0;
         public static int nLiveHighWater = 0;

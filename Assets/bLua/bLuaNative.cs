@@ -233,14 +233,11 @@ public class bLuaNative : MonoBehaviour
     public bLua.bLuaValue FullLookup(bLua.bLuaValue obj, string key)
     {
         bLua.bLuaValue fn;
-        /*
         if (_lookups.TryGetValue(key, out fn) == false)
         {
             fn = script.DoBuffer("lookup", $"return function(obj) return obj.{key} end");
             _lookups.Add(key, fn);
         }
-        */
-        fn = script.DoBuffer("lookup", $"return function(obj) return obj.{key} end");
 
         return script.Call(fn, obj);
     }
@@ -1063,15 +1060,9 @@ public class bLuaNative : MonoBehaviour
 
     public void Init()
     {
+        DeInit();
+
         instance = this;
-
-        if (script != null)
-        {
-            script.Close();
-            script = null;
-        }
-
-        _lookups.Clear();
 
         script = new Script();
 
@@ -1142,7 +1133,15 @@ end");
             script = null;
         }
 
+        _lookups.Clear();
+        _forcegc = null;
+        _callco = null;
+        _updateco = null;
+
         instance = null;
+
+        bLua.bLuaValue.DeInit();
+        bLua.bLuaUserData.DeInit();
     }
 
     struct ScheduledCoroutine

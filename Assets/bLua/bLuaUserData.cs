@@ -638,6 +638,16 @@ namespace bLua
             RegisterAssembly(System.Reflection.Assembly.GetExecutingAssembly());
         }
 
+        public static void DeInit()
+        {
+            _gc = null;
+            s_methods.Clear();
+            s_properties.Clear();
+            s_fields.Clear();
+            s_entries.Clear();
+            s_typenameToEntryIndex.Clear();
+        }
+
 
         public static void PushNewUserData(object obj)
         {
