@@ -6,7 +6,7 @@ using System.Reflection;
 namespace bLua
 {
     [System.AttributeUsage(System.AttributeTargets.Method | System.AttributeTargets.Property | System.AttributeTargets.Field)]
-    public sealed class HiddenAttribute : System.Attribute
+    public sealed class bLuaHiddenAttribute : System.Attribute
     {
     }
 
@@ -738,7 +738,7 @@ namespace bLua
 
             MethodInfo[] methods = t.GetMethods(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public);
             foreach (var methodInfo in methods) {
-                System.Attribute hiddenAttr = methodInfo.GetCustomAttribute(typeof(HiddenAttribute));
+                System.Attribute hiddenAttr = methodInfo.GetCustomAttribute(typeof(bLuaHiddenAttribute));
                 if (hiddenAttr != null)
                 {
                     continue;
@@ -797,7 +797,7 @@ namespace bLua
             PropertyInfo[] properties = t.GetProperties(BindingFlags.DeclaredOnly | BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static);
             foreach (var propertyInfo in properties)
             {
-                System.Attribute hiddenAttr = propertyInfo.GetCustomAttribute(typeof(HiddenAttribute));
+                System.Attribute hiddenAttr = propertyInfo.GetCustomAttribute(typeof(bLuaHiddenAttribute));
                 if (hiddenAttr != null)
                 {
                     continue;
@@ -825,7 +825,7 @@ namespace bLua
             FieldInfo[] fields = t.GetFields(BindingFlags.DeclaredOnly | BindingFlags.Public | BindingFlags.Instance);
             foreach (var fieldInfo in fields)
             {
-                System.Attribute hiddenAttr = fieldInfo.GetCustomAttribute(typeof(HiddenAttribute));
+                System.Attribute hiddenAttr = fieldInfo.GetCustomAttribute(typeof(bLuaHiddenAttribute));
                 if (hiddenAttr != null)
                 {
                     continue;
