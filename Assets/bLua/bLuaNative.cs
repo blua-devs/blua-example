@@ -119,7 +119,7 @@ public class bLuaNative : MonoBehaviour
 
         public void Close()
         {
-            if(_state != System.IntPtr.Zero)
+            if (_state != System.IntPtr.Zero)
             {
                 lua_close(_state);
                 _state = System.IntPtr.Zero;
@@ -142,7 +142,7 @@ public class bLuaNative : MonoBehaviour
                     throw new LuaException(msg);
                 }
 
-                using(s_profileLuaCallInner.Auto())
+                using (s_profileLuaCallInner.Auto())
                 {
                     result = lua_pcallk(_state, 0, nresults, 0, 0, System.IntPtr.Zero);
                 }
@@ -206,7 +206,7 @@ public class bLuaNative : MonoBehaviour
     public bLua.bLuaValue FullLookup(bLua.bLuaValue obj, string key)
     {
         bLua.bLuaValue fn;
-        if(_lookups.TryGetValue(key, out fn) == false)
+        if (_lookups.TryGetValue(key, out fn) == false)
         {
             fn = script.DoBuffer("lookup", $"return function(obj) return obj.{key} end");
             _lookups.Add(key, fn);
@@ -286,7 +286,7 @@ public class bLuaNative : MonoBehaviour
     static public void PushObjectOntoStack(object obj)
     {
         bLua.bLuaValue dynValue = obj as bLua.bLuaValue;
-        if(dynValue != null)
+        if (dynValue != null)
         {
             PushStack(dynValue);
             return;
@@ -298,22 +298,22 @@ public class bLuaNative : MonoBehaviour
         {
             lua_pushnil(script._state);
         }
-        else if(obj is int)
+        else if (obj is int)
         {
             lua_pushinteger(script._state, (int)obj);
-        } else if(obj is double)
+        } else if (obj is double)
         {
             lua_pushnumber(script._state, (double)obj);
-        } else if(obj is float)
+        } else if (obj is float)
         {
             lua_pushnumber(script._state, (double)(float)obj);
-        } else if(obj is bool)
+        } else if (obj is bool)
         {
             lua_pushboolean(script._state, ((bool)obj) ? 1 : 0);
-        } else if(obj is string)
+        } else if (obj is string)
         {
             lua_pushstring(script._state, (string)obj);
-        } else if(obj is LuaCFunction)
+        } else if (obj is LuaCFunction)
         {
             lua_pushcfunction(obj as LuaCFunction);
         } else
@@ -327,7 +327,7 @@ public class bLuaNative : MonoBehaviour
     {
         lua_checkstack(script._state, 1);
 
-        if(val == null)
+        if (val == null)
         {
             PushNil();
             return (int)DataType.Nil;
@@ -339,7 +339,7 @@ public class bLuaNative : MonoBehaviour
     static public object PopStackIntoObject()
     {
         DataType t = (DataType)lua_type(script._state, -1);
-        switch(t)
+        switch (t)
         {
             case DataType.Nil:
                 PopStack();
@@ -391,7 +391,7 @@ public class bLuaNative : MonoBehaviour
 
         lua_checkstack(script._state, 2);
 
-        for(int i = 1; i <= len; ++i)
+        for (int i = 1; i <= len; ++i)
         {
             lua_geti(script._state, -1, i);
             result.Add(PopStackIntoValue());
@@ -413,7 +413,7 @@ public class bLuaNative : MonoBehaviour
         for (int i = 1; i <= len; ++i)
         {
             int t = lua_geti(script._state, -1, i);
-            if(t == (int)DataType.String)
+            if (t == (int)DataType.String)
             {
                 result.Add(PopString());
             } else
@@ -435,7 +435,7 @@ public class bLuaNative : MonoBehaviour
         lua_pushnil(script._state);
         while(lua_next(script._state, -2) != 0)
         {
-            if(lua_type(script._state, -2) != (int)DataType.String)
+            if (lua_type(script._state, -2) != (int)DataType.String)
             {
                 lua_pop(script._state, 1);
                 continue;
@@ -481,7 +481,7 @@ public class bLuaNative : MonoBehaviour
         {
             var val = PopStackIntoValue();
 
-            if(lua_type(script._state, -1) != (int)DataType.String)
+            if (lua_type(script._state, -1) != (int)DataType.String)
             {
                 //pop key, value, and table.
                 lua_pop(script._state, 3);
@@ -551,7 +551,7 @@ public class bLuaNative : MonoBehaviour
     static public bLua.bLuaValue PopStackIntoValue()
     {
         int t = lua_type(script._state, -1);
-        switch(t)
+        switch (t)
         {
             case (int)DataType.Nil:
                 lua_pop(script._state, 1);
@@ -706,7 +706,7 @@ public class bLuaNative : MonoBehaviour
 
     public static string TraceMessage(string message=null, int level=1)
     {
-        if(message == null)
+        if (message == null)
         {
             message = "stack";
         }
@@ -854,7 +854,7 @@ public class bLuaNative : MonoBehaviour
     
     public static void PushClosure(LuaCFunction fn, bLuaValue[] upvalues)
     {
-        for(int i = 0; i != upvalues.Length; ++i)
+        for (int i = 0; i != upvalues.Length; ++i)
         {
             PushStack(upvalues[i]);
         }
@@ -1159,10 +1159,10 @@ end");
     {
         System.Text.StringBuilder sb = new System.Text.StringBuilder();
         int top = lua_gettop(state);
-        for(int i = 1; i <= top; ++i)
+        for (int i = 1; i <= top; ++i)
         {
             DataType t = (DataType)lua_type(state, i);
-            switch(t)
+            switch (t)
             {
                 case DataType.Nil:
                     sb.Append("nil");
@@ -1321,7 +1321,7 @@ end");
             Assert.AreEqual(t.Number, 15);
         }
 
-        using(bLuaValue fn = bLuaValue.CreateFunction(TestCFunction))
+        using (bLuaValue fn = bLuaValue.CreateFunction(TestCFunction))
         {
             Assert.AreEqual(fn.Call().Number, 5);
         }
@@ -1423,7 +1423,7 @@ end");
             niterations *= 10;
             var sw = System.Diagnostics.Stopwatch.StartNew();
 
-            for(long i = 0; i < niterations; ++i)
+            for (long i = 0; i < niterations; ++i)
             {
                 fn();
             }
@@ -1432,12 +1432,12 @@ end");
             elapsed = sw.ElapsedMilliseconds;
         }
 
-        if(niterations >= 1000000)
+        if (niterations >= 1000000)
         {
             double ns = elapsed * 1000000.0;
             ns /= niterations;
             Debug.Log($"BENCH: {name} did {niterations} in {elapsed}ms; {(int)ns}ns/iteration");
-        } else if(niterations >= 1000)
+        } else if (niterations >= 1000)
         {
             double us = elapsed * 1000.0;
             us /= niterations;

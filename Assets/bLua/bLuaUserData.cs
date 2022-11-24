@@ -176,7 +176,7 @@ namespace bLua
             try
             {
                 int stackSize = bLuaNative.lua_gettop(state);
-                if(stackSize == 0 || bLuaNative.lua_type(state, 1) != (int)DataType.UserData)
+                if (stackSize == 0 || bLuaNative.lua_type(state, 1) != (int)DataType.UserData)
                 {
                     bLuaNative.Error($"Object not provided when calling function.");
                     return 0;
@@ -210,7 +210,7 @@ namespace bLua
                 object[] args = new object[info.argTypes.Length];
                 int argIndex = args.Length - 1;
 
-                if(parms != null)
+                if (parms != null)
                 {
                     args[argIndex--] = parms;
                 }
@@ -242,14 +242,14 @@ namespace bLua
                     --argIndex;
                 }
 
-                if(bLuaNative.lua_gettop(state) < 1)
+                if (bLuaNative.lua_gettop(state) < 1)
                 {
                     bLuaNative.Error($"Stack is empty");
                     return 0;
                 }
 
                 int t = bLuaNative.lua_type(state, 1);
-                if(t != (int)DataType.UserData)
+                if (t != (int)DataType.UserData)
                 {
                     bLuaNative.Error($"Object is not a user data: {((DataType)t).ToString()}");
                     return 0;
@@ -257,7 +257,7 @@ namespace bLua
 
                 bLuaNative.lua_checkstack(state, 1);
                 int res = bLuaNative.lua_getiuservalue(state, 1, 1);
-                if(res != (int)DataType.Number)
+                if (res != (int)DataType.Number)
                 {
                     bLuaNative.Error($"Object not provided when calling function.");
                     return 0;
@@ -274,7 +274,7 @@ namespace bLua
             } catch(System.Exception e)
             {
                 var ex = e.InnerException;
-                if(ex == null)
+                if (ex == null)
                 {
                     ex = e;
                 }
@@ -477,7 +477,7 @@ namespace bLua
             } catch(System.Exception e)
             {
                 var ex = e.InnerException;
-                if(ex == null)
+                if (ex == null)
                 {
                     ex = e;
                 }
@@ -494,7 +494,7 @@ namespace bLua
         {
             bLuaNative.lua_checkstack(bLuaNative.script._state, 1);
             int ntype = bLuaNative.lua_getiuservalue(bLuaNative.script._state, nstack, 1);
-            if(ntype != (int)DataType.Number)
+            if (ntype != (int)DataType.Number)
             {
                 bLuaNative.Error($"Could not find valid user data object");
                 bLuaNative.PopStack();
@@ -594,15 +594,15 @@ namespace bLua
         {
             List<DebugEntry> entries = new List<DebugEntry>();
             Dictionary<string, int> types = new Dictionary<string, int>();
-            foreach(var p in s_liveObjects)
+            foreach (var p in s_liveObjects)
             {
-                if(p == null)
+                if (p == null)
                 {
                     continue;
                 }
                 string typeName = p.GetType().Name;
                 int count = 0;
-                if(types.ContainsKey(typeName))
+                if (types.ContainsKey(typeName))
                 {
                     count = types[typeName];
                 }
@@ -611,7 +611,7 @@ namespace bLua
                 types[typeName] = count;
             }
 
-            foreach(var p in types)
+            foreach (var p in types)
             {
                 entries.Add(new DebugEntry()
                 {
@@ -625,7 +625,7 @@ namespace bLua
                 return a.count.CompareTo(b.count);
             });
 
-            foreach(var entry in entries)
+            foreach (var entry in entries)
             {
                 Debug.Log($"LiveObject: {entry.typeName} -> {entry.count}");
             }
@@ -641,13 +641,13 @@ namespace bLua
 
         public static void PushNewUserData(object obj)
         {
-            if(obj == null)
+            if (obj == null)
             {
                 bLuaNative.PushNil();
                 return;
             }
             int typeIndex;
-            if(s_typenameToEntryIndex.TryGetValue(obj.GetType().Name, out typeIndex) == false)
+            if (s_typenameToEntryIndex.TryGetValue(obj.GetType().Name, out typeIndex) == false)
             {
                 bLuaNative.Error($"Type {obj.GetType().Name} is not marked as a user data. Add [LuaUserData] to its definition.");
                 bLuaNative.PushNil();
@@ -658,17 +658,17 @@ namespace bLua
 
             //work out the index of the new object.
             int objIndex;
-            if(s_liveObjectsFreeList.Count > 0)
+            if (s_liveObjectsFreeList.Count > 0)
             {
                 objIndex = s_liveObjectsFreeList[s_liveObjectsFreeList.Count - 1];
                 s_liveObjectsFreeList.RemoveAt(s_liveObjectsFreeList.Count - 1);
             }
             else
             {
-                if(s_nNextLiveObject >= s_liveObjects.Length)
+                if (s_nNextLiveObject >= s_liveObjects.Length)
                 {
                     object[] liveObjects = new object[s_liveObjects.Length * 2];
-                    for(int i = 0; i != s_liveObjects.Length; ++i)
+                    for (int i = 0; i != s_liveObjects.Length; ++i)
                     {
                         liveObjects[i] = s_liveObjects[i];
                     }
@@ -693,9 +693,9 @@ namespace bLua
 
         public static void RegisterAssembly(Assembly asm)
         {
-            foreach(var t in asm.DefinedTypes)
+            foreach (var t in asm.DefinedTypes)
             {
-                if(t.IsClass && t.GetCustomAttribute(typeof(bLuaUserDataAttribute)) != null) {
+                if (t.IsClass && t.GetCustomAttribute(typeof(bLuaUserDataAttribute)) != null) {
                     Register(t);
                 }
             }
@@ -703,7 +703,7 @@ namespace bLua
 
         public static void Register(System.Type t)
         {
-            if(s_typenameToEntryIndex.ContainsKey(t.Name))
+            if (s_typenameToEntryIndex.ContainsKey(t.Name))
             {
                 //can't register the same type multiple times.
                 return;
@@ -713,7 +713,7 @@ namespace bLua
 
             if (t.BaseType != null && t.BaseType != t)
             {
-                if(t.BaseType.IsClass && t.BaseType.GetCustomAttribute(typeof(bLuaUserDataAttribute)) != null)
+                if (t.BaseType.IsClass && t.BaseType.GetCustomAttribute(typeof(bLuaUserDataAttribute)) != null)
                 {
                     Register(t.BaseType);
 
@@ -739,7 +739,7 @@ namespace bLua
             MethodInfo[] methods = t.GetMethods(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public);
             foreach (var methodInfo in methods) {
                 System.Attribute hiddenAttr = methodInfo.GetCustomAttribute(typeof(HiddenAttribute));
-                if(hiddenAttr != null)
+                if (hiddenAttr != null)
                 {
                     continue;
                 }
@@ -748,17 +748,17 @@ namespace bLua
 
                 MethodCallInfo.ParamType[] argTypes = new MethodCallInfo.ParamType[methodParams.Length];
                 object[] defaultArgs = new object[methodParams.Length];
-                for(int i = 0; i != methodParams.Length; ++i)
+                for (int i = 0; i != methodParams.Length; ++i)
                 {
                     argTypes[i] = SystemTypeToParamType(methodParams[i].ParameterType);
-                    if(i == methodParams.Length-1 && methodParams[i].GetCustomAttribute(typeof(System.ParamArrayAttribute)) != null)
+                    if (i == methodParams.Length-1 && methodParams[i].GetCustomAttribute(typeof(System.ParamArrayAttribute)) != null)
                     {
                         argTypes[i] = MethodCallInfo.ParamType.Params;
                     }
 
                     if (methodParams[i].HasDefaultValue) {
                         defaultArgs[i] = methodParams[i].DefaultValue;
-                    } else if(argTypes[i] == MethodCallInfo.ParamType.LuaValue)
+                    } else if (argTypes[i] == MethodCallInfo.ParamType.LuaValue)
                     {
                         defaultArgs[i] = bLuaValue.Nil;
                     } else 
@@ -777,7 +777,7 @@ namespace bLua
 
 
                 bLuaNative.LuaCFunction fn;
-                if(methodInfo.IsStatic)
+                if (methodInfo.IsStatic)
                 {
                     fn = CallStaticFunction;
                 } else
@@ -795,16 +795,16 @@ namespace bLua
             }
 
             PropertyInfo[] properties = t.GetProperties(BindingFlags.DeclaredOnly | BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static);
-            foreach(var propertyInfo in properties)
+            foreach (var propertyInfo in properties)
             {
                 System.Attribute hiddenAttr = propertyInfo.GetCustomAttribute(typeof(HiddenAttribute));
-                if(hiddenAttr != null)
+                if (hiddenAttr != null)
                 {
                     continue;
                 }
 
                 MethodCallInfo.ParamType returnType = SystemTypeToParamType(propertyInfo.PropertyType);
-                if(returnType == MethodCallInfo.ParamType.Void)
+                if (returnType == MethodCallInfo.ParamType.Void)
                 {
                     continue;
                 }
@@ -823,7 +823,7 @@ namespace bLua
             }
 
             FieldInfo[] fields = t.GetFields(BindingFlags.DeclaredOnly | BindingFlags.Public | BindingFlags.Instance);
-            foreach(var fieldInfo in fields)
+            foreach (var fieldInfo in fields)
             {
                 System.Attribute hiddenAttr = fieldInfo.GetCustomAttribute(typeof(HiddenAttribute));
                 if (hiddenAttr != null)
@@ -853,7 +853,7 @@ namespace bLua
 
         static object PopStackIntoParamType(MethodCallInfo.ParamType t)
         {
-            switch(t)
+            switch (t)
             {
                 case MethodCallInfo.ParamType.Bool:
                     return bLuaNative.PopBool();

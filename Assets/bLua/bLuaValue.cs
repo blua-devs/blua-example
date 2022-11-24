@@ -80,7 +80,7 @@ namespace bLua
         public static bLuaValue InternString(string s)
         {
             bLuaValue result;
-            if(s_internedStrings.TryGetValue(s, out result))
+            if (s_internedStrings.TryGetValue(s, out result))
             {
                 return result;
             }
@@ -107,7 +107,7 @@ namespace bLua
 
         public static bLuaValue CreateString(string s)
         {
-            if(s == null)
+            if (s == null)
             {
                 return bLuaValue.Nil;
             }
@@ -206,7 +206,7 @@ namespace bLua
         {
 #if UNITY_EDITOR
             System.Threading.Interlocked.Increment(ref nLive);
-            if(nLive > nLiveHighWater)
+            if (nLive > nLiveHighWater)
             {
                 nLiveHighWater = nLive;
             }
@@ -251,7 +251,7 @@ namespace bLua
 
         void Dispose(bool deterministic)
         {
-            if(refid != NOREF && refid != REFNIL)
+            if (refid != NOREF && refid != REFNIL)
             {
                 if (deterministic)
                 {
@@ -328,7 +328,7 @@ namespace bLua
         {
             get
             {
-                if(Type != DataType.UserData)
+                if (Type != DataType.UserData)
                 {
                     return null;
                 }
@@ -341,7 +341,7 @@ namespace bLua
         {
             get
             {
-                if(Type != DataType.UserData)
+                if (Type != DataType.UserData)
                 {
                     return null;
                 }
@@ -358,7 +358,7 @@ namespace bLua
         {
             get
             {
-                if(Type == DataType.Function)
+                if (Type == DataType.Function)
                 {
                     return this;
                 }
@@ -371,7 +371,7 @@ namespace bLua
         {
             get
             {
-                if(Type == DataType.Table)
+                if (Type == DataType.Table)
                 {
                     return this;
                 }
@@ -390,7 +390,7 @@ namespace bLua
 
                 bLuaNative.PushStack(this);
                 int res = bLuaNative.lua_getmetatable(bLuaNative.script._state, -1);
-                if(res == 0)
+                if (res == 0)
                 {
                     bLuaNative.PopStack();
                     return Nil;
@@ -435,7 +435,7 @@ namespace bLua
         public bool CastToBool(bool defaultValue=false)
         {
             DataType dataType = (DataType)bLuaNative.PushStack(this);
-            switch(dataType)
+            switch (dataType)
             {
                 case DataType.Boolean:
                     return bLuaNative.PopBool();
@@ -509,7 +509,7 @@ namespace bLua
         {
             DataType dataType = (DataType)bLuaNative.PushStack(this);
 
-            switch(dataType)
+            switch (dataType)
             {
                 case DataType.Number:
                     return (float)bLuaNative.PopNumber();
@@ -517,7 +517,7 @@ namespace bLua
                     {
                         float f;
                         string s = bLuaNative.PopString();
-                        if(float.TryParse(s, out f))
+                        if (float.TryParse(s, out f))
                         {
                             return f;
                         }
@@ -593,7 +593,7 @@ namespace bLua
         public T CheckUserDataType<T>(string str) where T : class
         {
             T result = Object as T;
-            if(result == null)
+            if (result == null)
             {
                 Debug.Log($"Could not convert to lua value to type: {str}");
             }
@@ -608,19 +608,19 @@ namespace bLua
 
         public object ToObject(System.Type t)
         {
-            if(t == typeof(double))
+            if (t == typeof(double))
             {
                 return CastToNumber();
-            } else if(t == typeof(float))
+            } else if (t == typeof(float))
             {
                 return CastToFloat();
-            } else if(t == typeof(int))
+            } else if (t == typeof(int))
             {
                 return (int)CastToNumber();
-            } else if(t == typeof(bool))
+            } else if (t == typeof(bool))
             {
                 return CastToBool();
-            } else if(t == typeof(string))
+            } else if (t == typeof(string))
             {
                 return CastToString();
             } else
@@ -631,7 +631,7 @@ namespace bLua
 
         public object ToObject()
         {
-            switch(Type)
+            switch (Type)
             {
                 case DataType.Boolean:
                     return CastToBool();
@@ -750,7 +750,7 @@ namespace bLua
 
         public List<string> ListOfStrings()
         {
-            if(Type != DataType.Table)
+            if (Type != DataType.Table)
             {
                 return null;
             }
@@ -837,7 +837,7 @@ namespace bLua
             {
                 var result = Pairs();
                 var values = new List<bLuaValue>();
-                foreach(var p in result)
+                foreach (var p in result)
                 {
                     values.Add(p.Value);
                 }
@@ -890,7 +890,7 @@ namespace bLua
 
         public static void RunDispose(List<bLuaValue> list)
         {
-            foreach(var item in list)
+            foreach (var item in list)
             {
                 item.Dispose();
             }
@@ -899,7 +899,7 @@ namespace bLua
 
         public static void RunDispose(Dictionary<string,bLuaValue> dict)
         {
-            foreach(var item in dict)
+            foreach (var item in dict)
             {
                 item.Value.Dispose();
             }
@@ -908,7 +908,7 @@ namespace bLua
         public override bool Equals(object a)
         {
             bLuaValue other = a as bLuaValue;
-            if(other == null)
+            if (other == null)
             {
                 return false;
             }
