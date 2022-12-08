@@ -924,6 +924,5 @@ namespace bLua
                 return MethodCallInfo.ParamType.Void;
             }
         }
-
     }
-}
+} // bLua namespace

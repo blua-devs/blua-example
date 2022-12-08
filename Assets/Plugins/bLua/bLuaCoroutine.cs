@@ -9,4 +9,4 @@ namespace bLua
     {
         public int result;
     }
-}
+} // bLua namespace

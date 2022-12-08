@@ -10,38 +10,44 @@ public class Benchmark : MonoBehaviour
     /// benchmark ran the test. </summary>
     protected string identifier;
 
-    /// <summary> The benchmark Lua, stored here since all benchmarks runs the same Lua code. </summary>
-    protected string lua = @"
-MyFunctions = {
-}
-
-function MyFunctions.blah(y)
-    return y
-end
-
-function myfunction(x)
+    /// <summary> All of the scripts to test for benchmarking. </summary>
+    protected readonly KeyValuePair<string, string>[] benchmarkScripts =
+    {
+        new KeyValuePair<string, string>(
+            "NoOperation",
+@""),
+        new KeyValuePair<string, string>(
+            "BasicAddition",
+@"function add(x)
     return x + 5
 end
 
-function lotsofargs(a,b,c,d,e,f,g)
-    return a+b+c+d+e+f+g
+local val
+for i=1,1000 do
+    val = add(i)
+end"),
+        new KeyValuePair<string, string>(
+            "LotsOfArgsAddition",
+@"function add(a, b, c, d, e, f, g, h)
+    return a + b + c + d + e + f + g + h + 5
 end
 
-function make_table()
-    return {
-        xyz = 5,
-        abc = 9,
-        def = 7,
-    }
-end
-
-function make_big_table()
+local val
+for i=1,1000 do
+    val = add(i, 2, 3, 4, 5, 6, 7, 8)
+end"),
+        new KeyValuePair<string, string>(
+            "MakeBigTable",
+@"function make_big_table()
     local result = {}
     for i=1,1000 do
         result[tostring(i)] = i
     end
     return result
-end";
+end
+
+make_big_table()")
+    };
 
 
     void Awake()
@@ -63,9 +69,19 @@ end";
     }
 
 
-    /// <summary> Runs all of the benchmark tests. This needs to be overridden with code that runs the benchmark lua with Lua interpreter is 
-    /// being used for the benchmark. </summary>
-    public virtual void RunAllBenchmarks()
+    /// <summary> Runs all of the benchmark tests. </summary>
+    public void RunAllBenchmarks()
+    {
+        for (int i = 0; i < benchmarkScripts.Length; i++)
+        {
+            TimeBenchmark(benchmarkScripts[i].Key, () => RunBenchmark(benchmarkScripts[i].Value));
+        }
+    }
+
+    /// <summary> This needs to be overridden to simply run the Lua code that is passed into the function using whatever Lua interpreter 
+    /// is being benchmarked </summary>
+    /// <param name="lua">The Lua code to be tested.</param>
+    protected virtual void RunBenchmark(string lua)
     {
         throw new System.NotImplementedException();
     }
@@ -73,7 +89,7 @@ end";
     /// <summary> Runs a benchmark test and prints the results to the console. </summary>
     /// <param name="name"> The name for the benchmark test. This will be printed with the benchmark results. </param>
     /// <param name="action"> An action containing the test you want to run. </param>
-    protected void RunBenchmark(string name, System.Action action)
+    protected void TimeBenchmark(string name, System.Action action)
     {
         action();
 

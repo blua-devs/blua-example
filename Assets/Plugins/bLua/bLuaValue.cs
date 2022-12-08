@@ -6,7 +6,6 @@ using UnityEngine.Assertions;
 
 namespace bLua
 {
-
     public class bLuaValue : System.IDisposable
     {
         public static void DeInit()
@@ -943,5 +942,4 @@ namespace bLua
             return base.GetHashCode();
         }
     }
-
-}
+} // bLua namespace
