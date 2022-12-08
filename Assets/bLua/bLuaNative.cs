@@ -65,10 +65,6 @@ public class bLuaNativeEditor : Editor
         {
             bLuaNative.instance.RunUnitTests();
         }
-        if (GUILayout.Button("Run Unit Tests (w/ Benchmark)"))
-        {
-            bLuaNative.instance.RunBenchmark();
-        }
         if (GUILayout.Button("Run Test Coroutine"))
         {
             bLuaNative.instance.RunTestCoroutine();
@@ -229,8 +225,8 @@ public class bLuaNative : MonoBehaviour
         }
     }
 
-    Dictionary<string, bLua.bLuaValue> _lookups = new Dictionary<string, bLua.bLuaValue>(); 
-    public bLua.bLuaValue FullLookup(bLua.bLuaValue obj, string key)
+    static Dictionary<string, bLua.bLuaValue> _lookups = new Dictionary<string, bLua.bLuaValue>(); 
+    static public bLua.bLuaValue FullLookup(bLua.bLuaValue obj, string key)
     {
         bLua.bLuaValue fn;
         if (_lookups.TryGetValue(key, out fn) == false)
@@ -1249,12 +1245,7 @@ end");
     }
 
 #if UNITY_EDITOR
-    public void RunBenchmark()
-    {
-        RunUnitTests(true);
-    }
-
-    public void RunUnitTests(bool benchmarks=false)
+    public void RunUnitTests()
     {
         int stackSize = lua_gettop(script._state);
 
@@ -1402,82 +1393,7 @@ end");
 
         Debug.Log("Lua: Ran unit tests");
 
-        if (benchmarks)
-        {
-
-            Benchmark("Noop", () => { });
-            Benchmark("GetTop", () => lua_gettop(script._state));
-
-            using (bLua.bLuaValue fn = GetGlobal("myfunction"))
-            {
-                Benchmark("Call", () => script.Call(fn, 8));
-            }
-
-            using (bLua.bLuaValue fn = GetGlobal("lotsofargs"))
-            {
-                Benchmark("CallManyArgs", () => script.Call(fn, 8, 2, 3, 4, 5, 6, 2));
-            }
-
-            Benchmark("GetGlobal", () => GetGlobal("MyFunctions"));
-            Benchmark("FullLookup", () => FullLookup(GetGlobal("MyFunctions"), "blah"));
-
-            using (bLuaValue t = script.Call(GetGlobal("make_table")))
-            {
-                Benchmark("GetDict", () => bLuaValue.RunDispose(t.Dict()));
-            }
-
-            using (bLuaValue t = script.Call(GetGlobal("make_big_table")))
-            {
-                Benchmark("GetBigDict", () => bLuaValue.RunDispose(t.Dict()));
-            }
-
-            using (bLuaValue fn = GetGlobal("make_big_table"))
-            {
-                Benchmark("MakeBigTable", () => script.Call(fn));
-            }
-            Debug.Log("Ran benchmarks");
-        }
-
         Assert.AreEqual(lua_gettop(script._state), stackSize);
-    }
-
-    void Benchmark(string name, System.Action fn)
-    {
-        fn();
-
-        long niterations = 1;
-        long elapsed = 0;
-
-        while (elapsed < 10)
-        {
-            niterations *= 10;
-            var sw = System.Diagnostics.Stopwatch.StartNew();
-
-            for (long i = 0; i < niterations; ++i)
-            {
-                fn();
-            }
-
-            sw.Stop();
-            elapsed = sw.ElapsedMilliseconds;
-        }
-
-        if (niterations >= 1000000)
-        {
-            double ns = elapsed * 1000000.0;
-            ns /= niterations;
-            Debug.Log($"BENCH: {name} did {niterations} in {elapsed}ms; {(int)ns}ns/iteration");
-        } else if (niterations >= 1000)
-        {
-            double us = elapsed * 1000.0;
-            us /= niterations;
-            Debug.Log($"BENCH: {name} did {niterations} in {elapsed}ms; {(int)us}us/iteration");
-        } else
-        {
-            double ms = elapsed;
-            ms /= niterations;
-            Debug.Log($"BENCH: {name} did {niterations} in {elapsed}ms; {(int)ms}ms/iteration");
-        }
     }
 
     public void RunTestCoroutine()
