@@ -634,8 +634,10 @@ namespace bLua
 
         public static void Init()
         {
+            DeInit();
+
             _gc = bLuaValue.CreateFunction(GCFunction);
-            RegisterAssembly(System.Reflection.Assembly.GetExecutingAssembly());
+            RegisterAllAssemblies();
         }
 
         public static void DeInit()
@@ -659,7 +661,7 @@ namespace bLua
             int typeIndex;
             if (s_typenameToEntryIndex.TryGetValue(obj.GetType().Name, out typeIndex) == false)
             {
-                bLuaNative.Error($"Type {obj.GetType().Name} is not marked as a user data. Add [LuaUserData] to its definition.");
+                bLuaNative.Error($"Type {obj.GetType().Name} is not marked as a user data. Add [bLuaUserData] to its definition.");
                 bLuaNative.PushNil();
                 return;
             }
@@ -699,6 +701,14 @@ namespace bLua
             string msg = bLuaNative.TraceMessage("live object");
 
             s_liveObjects[objIndex] = obj;
+        }
+
+        public static void RegisterAllAssemblies()
+        {
+            foreach (Assembly asm in System.AppDomain.CurrentDomain.GetAssemblies())
+            {
+                RegisterAssembly(asm);
+            }
         }
 
         public static void RegisterAssembly(Assembly asm)

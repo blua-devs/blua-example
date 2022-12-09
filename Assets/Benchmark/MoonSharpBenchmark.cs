@@ -22,6 +22,12 @@ public class MoonSharpBenchmarkEditor : Editor
 }
 #endif // UNITY_EDITOR
 
+[MoonSharpUserData]
+public partial class BenchmarkUserData
+{
+
+}
+
 public class MoonSharpBenchmark : Benchmark
 {
 
@@ -32,8 +38,28 @@ public class MoonSharpBenchmark : Benchmark
     }
 
 
-    protected override void RunBenchmark(string lua)
+    protected override object GetScript()
     {
-        Script.RunString(lua);
+        return new Script();
+    }
+
+    protected override object RegisterUserData(object script)
+    {
+        Script moonSharpScript = script as Script;
+        if (moonSharpScript != null)
+        {
+            UserData.RegisterType(typeof(BenchmarkUserData));
+            moonSharpScript.Globals.Set("UserData", UserData.Create(new BenchmarkUserData()));
+        }
+        return moonSharpScript;
+    }
+
+    protected override void RunBenchmark(object script, string lua)
+    {
+        Script moonSharpScript = script as Script;
+        if (moonSharpScript != null)
+        {
+            moonSharpScript.DoString(lua);
+        }
     }
 }

@@ -21,6 +21,12 @@ public class bLuaBenchmarkEditor : Editor
 }
 #endif // UNITY_EDITOR
 
+[bLuaUserData]
+public partial class BenchmarkUserData
+{
+
+}
+
 public class bLuaBenchmark : Benchmark
 {
 
@@ -31,8 +37,28 @@ public class bLuaBenchmark : Benchmark
     }
 
 
-    protected override void RunBenchmark(string lua)
+    protected override object GetScript()
     {
-        bLuaNative.script.ExecBuffer("benchmark", lua);
+        return bLuaNative.script;
+    }
+
+    protected override object RegisterUserData(object script)
+    {
+        bLuaNative.Script bLuaScript = script as bLuaNative.Script;
+        if (bLuaScript != null)
+        {
+            bLuaUserData.Register(typeof(BenchmarkUserData));
+            bLuaNative.SetGlobal("UserData", bLuaValue.CreateUserData(new BenchmarkUserData()));
+        }
+        return bLuaScript;
+    }
+
+    protected override void RunBenchmark(object script, string lua)
+    {
+        bLuaNative.Script bLuaScript = script as bLuaNative.Script;
+        if (bLuaScript != null)
+        {
+            bLuaScript.ExecBuffer("benchmark", lua);
+        }
     }
 }
