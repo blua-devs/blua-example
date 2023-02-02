@@ -994,6 +994,8 @@ namespace bLua
         [DllImport(_dllName)]
         public static extern int lua_compare(System.IntPtr state, int idx1, int idx2, int op);
 
+        /// <summary> Interim control over the C#-managed Garbage Collection system </summary>
+        static public bool manualGCEnabled = false;
         bLuaValue _forcegc = null;
         float _lastgc = 0.0f;
 
@@ -1022,22 +1024,6 @@ namespace bLua
 
         void Update()
         {
-            if (Time.time > _lastgc + 10.0f)
-            {
-                using (s_profileLuaGC.Auto())
-                {
-                    Debug.Log("Run garbage collection");
-                    bLuaNative.script.Call(_forcegc);
-                }
-                _lastgc = Time.time;
-            }
-
-            int refid;
-            while (bLua.bLuaValue.deleteQueue.TryDequeue(out refid))
-            {
-                DestroyDynValue(refid);
-            }
-
             using (s_profileLuaCo.Auto())
             {
                 script.Call(_updateco);
@@ -1048,6 +1034,25 @@ namespace bLua
                     _scheduledCoroutines.RemoveAt(0);
 
                     CallCoroutine(co.fn, co.args);
+                }
+            }
+
+            if (manualGCEnabled)
+            {
+                if (Time.time > _lastgc + 10.0f)
+                {
+                    using (s_profileLuaGC.Auto())
+                    {
+                        Debug.Log("Run garbage collection");
+                        bLuaNative.script.Call(_forcegc);
+                    }
+                    _lastgc = Time.time;
+                }
+
+                int refid;
+                while (bLua.bLuaValue.deleteQueue.TryDequeue(out refid))
+                {
+                    DestroyDynValue(refid);
                 }
             }
         }

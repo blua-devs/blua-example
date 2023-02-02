@@ -262,9 +262,13 @@ namespace bLua
                 if (deterministic)
                 {
                     bLuaNative.DestroyDynValue(refid);
-                } else
+                }
+                else
                 {
-                    deleteQueue.Enqueue(refid);
+                    if (bLuaNative.manualGCEnabled)
+                    {
+                        deleteQueue.Enqueue(refid);
+                    }
                 }
                 refid = NOREF;
             }
