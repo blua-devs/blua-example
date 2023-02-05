@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Assertions;
+using bLua.NativeLua;
 
 namespace bLua
 {
@@ -130,8 +131,8 @@ namespace bLua
                     return entry.value;
                 } else
                 {
-                    bLuaNative.PushObjectOntoStack(s);
-                    var result = bLuaNative.PopStackIntoValue();
+                    Lua.PushObjectOntoStack(s);
+                    var result = Lua.PopStackIntoValue();
 
                     entry.key = s;
                     entry.value = result;
@@ -141,8 +142,8 @@ namespace bLua
                 }
             }
 
-            bLuaNative.PushObjectOntoStack(s);
-            return bLuaNative.PopStackIntoValue();
+            Lua.PushObjectOntoStack(s);
+            return Lua.PopStackIntoValue();
         }
 
         public static bLuaValue UniqueString(string s)
@@ -152,14 +153,14 @@ namespace bLua
                 return bLuaValue.Nil;
             }
 
-            bLuaNative.PushObjectOntoStack(s);
-            return bLuaNative.PopStackIntoValue();
+            Lua.PushObjectOntoStack(s);
+            return Lua.PopStackIntoValue();
         }
 
         public static bLuaValue CreateNumber(double d)
         {
-            bLuaNative.PushObjectOntoStack(d);
-            return bLuaNative.PopStackIntoValue();
+            Lua.PushObjectOntoStack(d);
+            return Lua.PopStackIntoValue();
         }
 
         public static bLuaValue CreateBool(bool b)
@@ -176,20 +177,20 @@ namespace bLua
         public static bLuaValue CreateTable(int reserveArray=0, int reserveTable=0)
         {
 
-            bLuaNative.PushNewTable(reserveArray, reserveTable);
-            return bLuaNative.PopStackIntoValue();
+            Lua.PushNewTable(reserveArray, reserveTable);
+            return Lua.PopStackIntoValue();
         }
 
-        public static bLuaValue CreateFunction(bLuaNative.LuaCFunction fn)
+        public static bLuaValue CreateFunction(Lua.LuaCFunction fn)
         {
-            bLuaNative.lua_pushcfunction(fn);
-            return bLuaNative.PopStackIntoValue();
+            Lua.LuaPushCFunction(fn);
+            return Lua.PopStackIntoValue();
         }
 
-        public static bLuaValue CreateClosure(bLuaNative.LuaCFunction fn, params bLuaValue[] upvalues)
+        public static bLuaValue CreateClosure(Lua.LuaCFunction fn, params bLuaValue[] upvalues)
         {
-            bLuaNative.PushClosure(fn, upvalues);
-            return bLuaNative.PopStackIntoValue();
+            Lua.PushClosure(fn, upvalues);
+            return Lua.PopStackIntoValue();
         }
 
         public static bLuaValue CreateUserData(object obj)
@@ -199,13 +200,13 @@ namespace bLua
                 return Nil;
             }
             bLuaUserData.PushNewUserData(obj);
-            return bLuaNative.PopStackIntoValue();
+            return Lua.PopStackIntoValue();
         }
 
         public static bLuaValue FromObject(object obj)
         {
-            bLuaNative.PushObjectOntoStack(obj);
-            return bLuaNative.PopStackIntoValue();
+            Lua.PushObjectOntoStack(obj);
+            return Lua.PopStackIntoValue();
         }
 
         public bLuaValue()
@@ -261,7 +262,7 @@ namespace bLua
             {
                 if (deterministic)
                 {
-                    bLuaNative.DestroyDynValue(refid);
+                    Lua.DestroyDynValue(refid);
                 }
                 else
                 {
@@ -282,9 +283,9 @@ namespace bLua
             {
                 if (dataType == DataType.Unknown)
                 {
-                    bLuaNative.PushStack(this);
-                    dataType = bLuaNative.InspectTypeOnTopOfStack();
-                    bLuaNative.PopStack();
+                    Lua.PushStack(this);
+                    dataType = Lua.InspectTypeOnTopOfStack();
+                    Lua.PopStack();
                 }
 
                 return dataType;
@@ -295,8 +296,8 @@ namespace bLua
         {
             get
             {
-                bLuaNative.PushStack(this);
-                return bLuaNative.PopNumber();
+                Lua.PushStack(this);
+                return Lua.PopNumber();
             }
         }
 
@@ -304,8 +305,8 @@ namespace bLua
         {
             get
             {
-                bLuaNative.PushStack(this);
-                return bLuaNative.PopInteger();
+                Lua.PushStack(this);
+                return Lua.PopInteger();
             }
         }
 
@@ -313,8 +314,8 @@ namespace bLua
         {
             get
             {
-                bLuaNative.PushStack(this);
-                return bLuaNative.PopBool();
+                Lua.PushStack(this);
+                return Lua.PopBool();
             }
         }
 
@@ -323,13 +324,13 @@ namespace bLua
         {
             get
             {
-                int t = bLuaNative.PushStack(this);
+                int t = Lua.PushStack(this);
                 if (t == (int)DataType.String)
                 {
-                    return bLuaNative.PopString();
+                    return Lua.PopString();
                 }
 
-                bLuaNative.PopStack();
+                Lua.PopStack();
                 return null;
             }
         }
@@ -356,9 +357,9 @@ namespace bLua
                     return null;
                 }
 
-                bLuaNative.PushStack(this);
+                Lua.PushStack(this);
                 object result = bLuaUserData.GetUserDataObject(-1);
-                bLuaNative.PopStack();
+                Lua.PopStack();
                 return result;
 
             }
@@ -395,67 +396,67 @@ namespace bLua
             get
             {
 #if UNITY_EDITOR
-                int nstack = bLuaNative.lua_gettop(bLuaNative._state);
+                int nstack = LuaLibAPI.lua_gettop(bLuaNative._state);
 #endif
 
-                bLuaNative.PushStack(this);
-                int res = bLuaNative.lua_getmetatable(bLuaNative._state, -1);
+                Lua.PushStack(this);
+                int res = LuaLibAPI.lua_getmetatable(bLuaNative._state, -1);
                 if (res == 0)
                 {
-                    bLuaNative.PopStack();
+                    Lua.PopStack();
                     return Nil;
                 }
 
-                var result = bLuaNative.PopStackIntoValue();
-                bLuaNative.PopStack();
+                var result = Lua.PopStackIntoValue();
+                Lua.PopStack();
 
 #if UNITY_EDITOR
-                Assert.AreEqual(nstack, bLuaNative.lua_gettop(bLuaNative._state));
+                Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(bLuaNative._state));
 #endif
 
                 return result;
             }
             set
             {
-                bLuaNative.PushStack(this);
-                bLuaNative.PushStack(value);
-                bLuaNative.lua_setmetatable(bLuaNative._state, -2);
-                bLuaNative.PopStack();
+                Lua.PushStack(this);
+                Lua.PushStack(value);
+                LuaLibAPI.lua_setmetatable(bLuaNative._state, -2);
+                Lua.PopStack();
             }
         }
 
         public bool? CastToOptionalBool()
         {
-            DataType dataType = (DataType)bLuaNative.PushStack(this);
+            DataType dataType = (DataType)Lua.PushStack(this);
             switch (dataType)
             {
                 case DataType.Boolean:
-                    return bLuaNative.PopBool();
+                    return Lua.PopBool();
                 case DataType.Number:
-                    return bLuaNative.PopNumber() != 0;
+                    return Lua.PopNumber() != 0;
                 case DataType.Nil:
-                    bLuaNative.PopStack();
+                    Lua.PopStack();
                     return null;
                 default:
-                    bLuaNative.PopStack();
+                    Lua.PopStack();
                     return null;
             }
         }
 
         public bool CastToBool(bool defaultValue=false)
         {
-            DataType dataType = (DataType)bLuaNative.PushStack(this);
+            DataType dataType = (DataType)Lua.PushStack(this);
             switch (dataType)
             {
                 case DataType.Boolean:
-                    return bLuaNative.PopBool();
+                    return Lua.PopBool();
                 case DataType.Number:
-                    return bLuaNative.PopNumber() != 0;
+                    return Lua.PopNumber() != 0;
                 case DataType.Nil:
-                    bLuaNative.PopStack();
+                    Lua.PopStack();
                     return defaultValue;
                 default:
-                    bLuaNative.PopStack();
+                    Lua.PopStack();
                     return defaultValue;
             }
         }
@@ -472,33 +473,33 @@ namespace bLua
 
         public string CastToString(string defaultValue="")
         {
-            DataType dataType = (DataType)bLuaNative.PushStack(this);
+            DataType dataType = (DataType)Lua.PushStack(this);
 
             switch (dataType)
             {
                 case DataType.String:
-                    return bLuaNative.PopString();
+                    return Lua.PopString();
                 case DataType.Number:
-                    return bLuaNative.PopNumber().ToString();
+                    return Lua.PopNumber().ToString();
                 case DataType.Boolean:
-                    return bLuaNative.PopBool() ? "true" : "false";
+                    return Lua.PopBool() ? "true" : "false";
                 default:
-                    bLuaNative.PopStack();
+                    Lua.PopStack();
                     return defaultValue;
             }
         }
 
         public float? CastToOptionalFloat()
         {
-            DataType dataType = (DataType)bLuaNative.PushStack(this);
+            DataType dataType = (DataType)Lua.PushStack(this);
             switch (dataType)
             {
                 case DataType.Number:
-                    return (float)bLuaNative.PopNumber();
+                    return (float)Lua.PopNumber();
                 case DataType.String:
                     {
                         float f;
-                        string s = bLuaNative.PopString();
+                        string s = Lua.PopString();
                         if (float.TryParse(s, out f))
                         {
                             return f;
@@ -507,9 +508,9 @@ namespace bLua
                         return null;
                     }
                 case DataType.Boolean:
-                    return bLuaNative.PopBool() ? 1.0f : 0.0f;
+                    return Lua.PopBool() ? 1.0f : 0.0f;
                 default:
-                    bLuaNative.PopStack();
+                    Lua.PopStack();
                     return null;
             }
 
@@ -517,16 +518,16 @@ namespace bLua
 
         public float CastToFloat(float defaultValue=0.0f)
         {
-            DataType dataType = (DataType)bLuaNative.PushStack(this);
+            DataType dataType = (DataType)Lua.PushStack(this);
 
             switch (dataType)
             {
                 case DataType.Number:
-                    return (float)bLuaNative.PopNumber();
+                    return (float)Lua.PopNumber();
                 case DataType.String:
                     {
                         float f;
-                        string s = bLuaNative.PopString();
+                        string s = Lua.PopString();
                         if (float.TryParse(s, out f))
                         {
                             return f;
@@ -535,25 +536,25 @@ namespace bLua
                         return defaultValue;
                     }
                 case DataType.Boolean:
-                    return bLuaNative.PopBool() ? 1.0f : 0.0f;
+                    return Lua.PopBool() ? 1.0f : 0.0f;
                 default:
-                    bLuaNative.PopStack();
+                    Lua.PopStack();
                     return defaultValue;
             }
         }
 
         public int CastToInt(int defaultValue = 0)
         {
-            DataType dataType = (DataType)bLuaNative.PushStack(this);
+            DataType dataType = (DataType)Lua.PushStack(this);
 
             switch (dataType)
             {
                 case DataType.Number:
-                    return (int)bLuaNative.PopNumber();
+                    return (int)Lua.PopNumber();
                 case DataType.String:
                     {
                         int f;
-                        string s = bLuaNative.PopString();
+                        string s = Lua.PopString();
                         if (int.TryParse(s, out f))
                         {
                             return f;
@@ -562,9 +563,9 @@ namespace bLua
                         return defaultValue;
                     }
                 case DataType.Boolean:
-                    return bLuaNative.PopBool() ? 1 : 0;
+                    return Lua.PopBool() ? 1 : 0;
                 default:
-                    bLuaNative.PopStack();
+                    Lua.PopStack();
                     return defaultValue;
             }
         }
@@ -572,16 +573,16 @@ namespace bLua
 
         public double? CastToNumber()
         {
-            DataType dataType = (DataType)bLuaNative.PushStack(this);
+            DataType dataType = (DataType)Lua.PushStack(this);
 
             switch (dataType)
             {
                 case DataType.Number:
-                    return bLuaNative.PopNumber();
+                    return Lua.PopNumber();
                 case DataType.String:
                     {
                         double f;
-                        string s = bLuaNative.PopString();
+                        string s = Lua.PopString();
                         if (double.TryParse(s, out f))
                         {
                             return f;
@@ -590,12 +591,12 @@ namespace bLua
                         return 0.0;
                     }
                 case DataType.Boolean:
-                    return bLuaNative.PopBool() ? 1.0 : 0.0;
+                    return Lua.PopBool() ? 1.0 : 0.0;
                 case DataType.Nil:
-                    bLuaNative.PopStack();
+                    Lua.PopStack();
                     return null;
                 default:
-                    bLuaNative.PopStack();
+                    Lua.PopStack();
                     return null;
             }
         }
@@ -670,71 +671,71 @@ namespace bLua
         {
             get
             {
-                return bLuaNative.Length(this);
+                return Lua.Length(this);
             }
         }
 
         public bLuaValue this[int n] {
             get
             {
-                return bLuaNative.Index(this, n+1);
+                return Lua.Index(this, n+1);
             }
         }
 
         public bLuaValue GetNonRaw(string key)
         {
-            return bLuaNative.GetTable(this, key);
+            return Lua.GetTable(this, key);
         }
 
         public bLuaValue GetNonRaw(object key)
         {
-            return bLuaNative.GetTable(this, key);
+            return Lua.GetTable(this, key);
         }
 
         //synonyms with RawGet
         public bLuaValue Get(string key)
         {
-            return bLuaNative.RawGetTable(this, key);
+            return Lua.RawGetTable(this, key);
         }
 
         public bLuaValue Get(object key)
         {
-            return bLuaNative.RawGetTable(this, key);
+            return Lua.RawGetTable(this, key);
         }
 
         public bLuaValue RawGet(object key)
         {
-            return bLuaNative.RawGetTable(this, key);
+            return Lua.RawGetTable(this, key);
         }
 
         public bLuaValue RawGet(string key)
         {
-            return bLuaNative.RawGetTable(this, key);
+            return Lua.RawGetTable(this, key);
         }
 
         public void Set(bLuaValue key, bLuaValue val)
         {
-            bLuaNative.SetTable(this, key, val);
+            Lua.SetTable(this, key, val);
         }
 
         public void Set(string key, bLuaValue val)
         {
-            bLuaNative.SetTable(this, key, val);
+            Lua.SetTable(this, key, val);
         }
 
         public void Set(string key, object val)
         {
-            bLuaNative.SetTable(this, key, val);
+            Lua.SetTable(this, key, val);
         }
 
         public void Set(object key, object val)
         {
-            bLuaNative.SetTable(this, key, val);
+            Lua.SetTable(this, key, val);
         }
 
         public void Remove(object key)
         {
-            bLuaNative.SetTable(this, key, Nil);
+            Lua.SetTable(this, key, Nil);
         }
 
         public List<bLuaValue> List()
@@ -745,14 +746,14 @@ namespace bLua
             }
 
 #if UNITY_EDITOR
-            int nstack = bLuaNative.lua_gettop(bLuaNative._state);
+            int nstack = LuaLibAPI.lua_gettop(bLuaNative._state);
 #endif
 
-            bLuaNative.PushStack(this);
-            var result = bLuaNative.PopList();
+            Lua.PushStack(this);
+            var result = Lua.PopList();
 
 #if UNITY_EDITOR
-            Assert.AreEqual(nstack, bLuaNative.lua_gettop(bLuaNative._state));
+            Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(bLuaNative._state));
 #endif
 
             return result;
@@ -766,13 +767,13 @@ namespace bLua
             }
 
 #if UNITY_EDITOR
-            int nstack = bLuaNative.lua_gettop(bLuaNative._state);
+            int nstack = LuaLibAPI.lua_gettop(bLuaNative._state);
 #endif
 
-            bLuaNative.PushStack(this);
-            var result = bLuaNative.PopListOfStrings();
+            Lua.PushStack(this);
+            var result = Lua.PopListOfStrings();
 #if UNITY_EDITOR
-            Assert.AreEqual(nstack, bLuaNative.lua_gettop(bLuaNative._state));
+            Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(bLuaNative._state));
 #endif
 
             return result;
@@ -781,14 +782,14 @@ namespace bLua
         public Dictionary<string,bLuaValue> Dict()
         {
 #if UNITY_EDITOR
-            int nstack = bLuaNative.lua_gettop(bLuaNative._state);
+            int nstack = LuaLibAPI.lua_gettop(bLuaNative._state);
 #endif
 
-            bLuaNative.PushStack(this);
-            var result = bLuaNative.PopDict();
+            Lua.PushStack(this);
+            var result = Lua.PopDict();
 
 #if UNITY_EDITOR
-            Assert.AreEqual(nstack, bLuaNative.lua_gettop(bLuaNative._state));
+            Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(bLuaNative._state));
 #endif
 
             return result;
@@ -803,14 +804,14 @@ namespace bLua
         public List<Pair> Pairs()
         {
 #if UNITY_EDITOR
-            int nstack = bLuaNative.lua_gettop(bLuaNative._state);
+            int nstack = LuaLibAPI.lua_gettop(bLuaNative._state);
 #endif
 
-            bLuaNative.PushStack(this);
-            var result = bLuaNative.PopFullDict();
+            Lua.PushStack(this);
+            var result = Lua.PopFullDict();
 
 #if UNITY_EDITOR
-            Assert.AreEqual(nstack, bLuaNative.lua_gettop(bLuaNative._state));
+            Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(bLuaNative._state));
 #endif
 
 
@@ -822,7 +823,7 @@ namespace bLua
             get
             {
 #if UNITY_EDITOR
-                int nstack = bLuaNative.lua_gettop(bLuaNative._state);
+                int nstack = LuaLibAPI.lua_gettop(bLuaNative._state);
 #endif
 
                 var result = Pairs();
@@ -833,7 +834,7 @@ namespace bLua
                 }
 
 #if UNITY_EDITOR
-                Assert.AreEqual(nstack, bLuaNative.lua_gettop(bLuaNative._state));
+                Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(bLuaNative._state));
 #endif
 
                 return values;
@@ -864,14 +865,14 @@ namespace bLua
             get
             {
 #if UNITY_EDITOR
-                int nstack = bLuaNative.lua_gettop(bLuaNative._state);
+                int nstack = LuaLibAPI.lua_gettop(bLuaNative._state);
 #endif
 
-                bLuaNative.PushStack(this);
-                var result = bLuaNative.PopTableEmpty();
+                Lua.PushStack(this);
+                var result = Lua.PopTableEmpty();
 
 #if UNITY_EDITOR
-                Assert.AreEqual(nstack, bLuaNative.lua_gettop(bLuaNative._state));
+                Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(bLuaNative._state));
 #endif
 
                 return result;
@@ -883,19 +884,19 @@ namespace bLua
         {
             get
             {
-                bLuaNative.PushStack(this);
-                return !bLuaNative.PopTableHasNonInts();
+                Lua.PushStack(this);
+                return !Lua.PopTableHasNonInts();
             }
         }
 
         public void Append(bLuaValue val)
         {
-            bLuaNative.AppendArray(this, val);
+            Lua.AppendArray(this, val);
         }
 
         public void Append(object val)
         {
-            bLuaNative.AppendArray(this, val);
+            Lua.AppendArray(this, val);
         }
 
         public static void RunDispose(List<bLuaValue> list)
@@ -924,17 +925,17 @@ namespace bLua
             }
 
 #if UNITY_EDITOR
-            int nstack = bLuaNative.lua_gettop(bLuaNative._state);
+            int nstack = LuaLibAPI.lua_gettop(bLuaNative._state);
 #endif
 
-            bLuaNative.PushStack(this);
-            bLuaNative.PushStack(other);
+            Lua.PushStack(this);
+            Lua.PushStack(other);
 
-            int res = bLuaNative.lua_rawequal(bLuaNative._state, -1, -2);
-            bLuaNative.lua_pop(bLuaNative._state, 2);
+            int res = LuaLibAPI.lua_rawequal(bLuaNative._state, -1, -2);
+            Lua.LuaPop(bLuaNative._state, 2);
 
 #if UNITY_EDITOR
-            Assert.AreEqual(nstack, bLuaNative.lua_gettop(bLuaNative._state));
+            Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(bLuaNative._state));
 #endif
 
 

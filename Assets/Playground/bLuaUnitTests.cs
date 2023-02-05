@@ -43,7 +43,7 @@ public class bLuaUnitTests : MonoBehaviour
     {
         bLuaNative.Init();
 
-        int stackSize = bLuaNative.lua_gettop(bLuaNative._state);
+        int stackSize = bLua.NativeLua.LuaLibAPI.lua_gettop(bLuaNative._state);
 
         bLuaNative.ExecBuffer("main", @"
 print('hello world')
@@ -119,7 +119,7 @@ end");
         {
             Assert.AreEqual(bLuaNative.Call(fn, 12).Number, 12.0);
 
-            Assert.AreEqual(bLuaNative.lua_gettop(bLuaNative._state), stackSize);
+            Assert.AreEqual(bLua.NativeLua.LuaLibAPI.lua_gettop(bLuaNative._state), stackSize);
         }
 
         using (bLuaValue fn = bLuaNative.GetGlobal("make_table"))
@@ -189,7 +189,7 @@ end");
 
         Debug.Log("Lua: Ran unit tests");
 
-        Assert.AreEqual(bLuaNative.lua_gettop(bLuaNative._state), stackSize);
+        Assert.AreEqual(bLua.NativeLua.LuaLibAPI.lua_gettop(bLuaNative._state), stackSize);
     }
 
     public void RunTestCoroutines()
@@ -227,7 +227,7 @@ end");
 
     public static int TestCFunction(System.IntPtr state)
     {
-        bLuaNative.PushObjectOntoStack(5);
+        bLua.NativeLua.Lua.PushObjectOntoStack(5);
         return 1;
     }
 }

@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using System.Reflection;
+using bLua.NativeLua;
 
 namespace bLua
 {
@@ -175,14 +176,14 @@ namespace bLua
 
             try
             {
-                int stackSize = bLuaNative.lua_gettop(state);
-                if (stackSize == 0 || bLuaNative.lua_type(state, 1) != (int)DataType.UserData)
+                int stackSize = LuaLibAPI.lua_gettop(state);
+                if (stackSize == 0 || LuaLibAPI.lua_type(state, 1) != (int)DataType.UserData)
                 {
                     bLuaNative.Error($"Object not provided when calling function.");
                     return 0;
                 }
 
-                int n = bLuaNative.lua_tointegerx(state, bLuaNative.lua_upvalueindex(1), System.IntPtr.Zero);
+                int n = LuaLibAPI.lua_tointegerx(state, Lua.UpValueIndex(1), System.IntPtr.Zero);
 
                 if (n < 0 || n >= s_methods.Count)
                 {
@@ -225,11 +226,11 @@ namespace bLua
                 {
                     if (parms != null)
                     {
-                        parms[parmsIndex--] = bLuaNative.PopStackIntoObject();
+                        parms[parmsIndex--] = Lua.PopStackIntoObject();
                     }
                     else
                     {
-                        bLuaNative.PopStack();
+                        Lua.PopStack();
                     }
                     --stackSize;
                 }
@@ -242,27 +243,27 @@ namespace bLua
                     --argIndex;
                 }
 
-                if (bLuaNative.lua_gettop(state) < 1)
+                if (LuaLibAPI.lua_gettop(state) < 1)
                 {
                     bLuaNative.Error($"Stack is empty");
                     return 0;
                 }
 
-                int t = bLuaNative.lua_type(state, 1);
+                int t = LuaLibAPI.lua_type(state, 1);
                 if (t != (int)DataType.UserData)
                 {
                     bLuaNative.Error($"Object is not a user data: {((DataType)t).ToString()}");
                     return 0;
                 }
 
-                bLuaNative.lua_checkstack(state, 1);
-                int res = bLuaNative.lua_getiuservalue(state, 1, 1);
+                LuaLibAPI.lua_checkstack(state, 1);
+                int res = LuaLibAPI.lua_getiuservalue(state, 1, 1);
                 if (res != (int)DataType.Number)
                 {
                     bLuaNative.Error($"Object not provided when calling function.");
                     return 0;
                 }
-                int liveObjectIndex = bLuaNative.lua_tointegerx(state, -1, System.IntPtr.Zero);
+                int liveObjectIndex = LuaLibAPI.lua_tointegerx(state, -1, System.IntPtr.Zero);
 
                 object obj = s_liveObjects[liveObjectIndex];
 
@@ -293,10 +294,10 @@ namespace bLua
 
             try
             {
-                int n = bLuaNative.lua_tointegerx(state, bLuaNative.lua_upvalueindex(1), System.IntPtr.Zero);
+                int n = LuaLibAPI.lua_tointegerx(state, Lua.UpValueIndex(1), System.IntPtr.Zero);
                 MethodCallInfo info = s_methods[n];
 
-                int stackSize = bLuaNative.lua_gettop(state);
+                int stackSize = LuaLibAPI.lua_gettop(state);
 
                 object[] parms = null;
                 int parmsIndex = 0;
@@ -330,11 +331,11 @@ namespace bLua
                 {
                     if (parms != null)
                     {
-                        parms[parmsIndex--] = bLuaNative.PopStackIntoObject();
+                        parms[parmsIndex--] = Lua.PopStackIntoObject();
                     }
                     else
                     {
-                        bLuaNative.PopStack();
+                        Lua.PopStack();
                     }
                     --stackSize;
                 }
@@ -371,36 +372,36 @@ namespace bLua
             switch (returnType)
             {
                 case MethodCallInfo.ParamType.Void:
-                    bLuaNative.PushNil();
+                    Lua.PushNil();
                     return;
                 case MethodCallInfo.ParamType.LuaValue:
                     {
-                        bLuaNative.PushStack(result as bLuaValue);
+                        Lua.PushStack(result as bLuaValue);
                         return;
                     }
                 case MethodCallInfo.ParamType.Bool:
                     {
-                        bLuaNative.PushObjectOntoStack((bool)result);
+                        Lua.PushObjectOntoStack((bool)result);
                         return;
                     }
                 case MethodCallInfo.ParamType.Int:
                     {
-                        bLuaNative.PushObjectOntoStack((int)result);
+                        Lua.PushObjectOntoStack((int)result);
                         return;
                     }
                 case MethodCallInfo.ParamType.Float:
                     {
-                        bLuaNative.PushObjectOntoStack((float)result);
+                        Lua.PushObjectOntoStack((float)result);
                         return;
                     }
                 case MethodCallInfo.ParamType.Double:
                     {
-                        bLuaNative.PushObjectOntoStack((double)result);
+                        Lua.PushObjectOntoStack((double)result);
                         return;
                     }
                 case MethodCallInfo.ParamType.Str:
                     {
-                        bLuaNative.PushObjectOntoStack((string)result);
+                        Lua.PushObjectOntoStack((string)result);
                         return;
                     }
                 case MethodCallInfo.ParamType.UserDataClass:
@@ -409,7 +410,7 @@ namespace bLua
                         return;
                     }
                 default:
-                    bLuaNative.PushNil();
+                    Lua.PushNil();
                     return;
             }
         }
@@ -421,7 +422,7 @@ namespace bLua
             {
                 bLuaNative._state = state;
 
-                int n = bLuaNative.lua_tointegerx(state, bLuaNative.lua_upvalueindex(1), System.IntPtr.Zero);
+                int n = LuaLibAPI.lua_tointegerx(state, Lua.UpValueIndex(1), System.IntPtr.Zero);
 
                 if (n < 0 || n >= s_entries.Count)
                 {
@@ -431,7 +432,7 @@ namespace bLua
 
                 UserDataRegistryEntry userDataInfo = s_entries[n];
 
-                string str = bLuaNative.lua_getstring(state, 2);
+                string str = Lua.GetString(state, 2);
 
                 UserDataRegistryEntry.PropertyEntry propertyEntry;
                 if (userDataInfo.properties.TryGetValue(str, out propertyEntry))
@@ -439,15 +440,15 @@ namespace bLua
                     switch (propertyEntry.propertyType)
                     {
                         case UserDataRegistryEntry.PropertyEntry.Type.Method:
-                            int val = bLuaNative.PushStack(s_methods[propertyEntry.index].closure);
+                            int val = Lua.PushStack(s_methods[propertyEntry.index].closure);
                             return 1;
                         case UserDataRegistryEntry.PropertyEntry.Type.Property:
                             {
                                 //get the iuservalue for the userdata onto the stack.
-                                bLuaNative.lua_checkstack(state, 1);
-                                bLuaNative.lua_getiuservalue(state, 1, 1);
+                                LuaLibAPI.lua_checkstack(state, 1);
+                                LuaLibAPI.lua_getiuservalue(state, 1, 1);
 
-                                int instanceIndex = bLuaNative.PopInteger();
+                                int instanceIndex = Lua.PopInteger();
                                 object obj = s_liveObjects[instanceIndex];
 
                                 var propertyInfo = s_properties[propertyEntry.index];
@@ -458,9 +459,9 @@ namespace bLua
                         case UserDataRegistryEntry.PropertyEntry.Type.Field:
                             {
                                 //get the iuservalue for the userdata onto the stack.
-                                bLuaNative.lua_checkstack(state, 1);
-                                bLuaNative.lua_getiuservalue(state, 1, 1);
-                                int instanceIndex = bLuaNative.PopInteger();
+                                LuaLibAPI.lua_checkstack(state, 1);
+                                LuaLibAPI.lua_getiuservalue(state, 1, 1);
+                                int instanceIndex = Lua.PopInteger();
                                 object obj = s_liveObjects[instanceIndex];
 
                                 var fieldInfo = s_fields[propertyEntry.index];
@@ -471,7 +472,7 @@ namespace bLua
                     }
                 }
 
-                bLuaNative.PushNil();
+                Lua.PushNil();
 
                 return 1;
             } catch(System.Exception e)
@@ -482,7 +483,7 @@ namespace bLua
                     ex = e;
                 }
                 bLuaNative.Error("Error indexing userdata", $"Error in index: {ex.Message} {ex.StackTrace}");
-                bLuaNative.PushNil();
+                Lua.PushNil();
                 return 1;
             } finally
             {
@@ -492,20 +493,20 @@ namespace bLua
 
         static public object GetUserDataObject(int nstack)
         {
-            bLuaNative.lua_checkstack(bLuaNative._state, 1);
-            int ntype = bLuaNative.lua_getiuservalue(bLuaNative._state, nstack, 1);
+            LuaLibAPI.lua_checkstack(bLuaNative._state, 1);
+            int ntype = LuaLibAPI.lua_getiuservalue(bLuaNative._state, nstack, 1);
             if (ntype != (int)DataType.Number)
             {
                 bLuaNative.Error($"Could not find valid user data object");
-                bLuaNative.PopStack();
+                Lua.PopStack();
                 return null;
             }
 
-            int liveObjectIndex = bLuaNative.lua_tointegerx(bLuaNative._state, -1, System.IntPtr.Zero);
+            int liveObjectIndex = LuaLibAPI.lua_tointegerx(bLuaNative._state, -1, System.IntPtr.Zero);
 
             object obj = s_liveObjects[liveObjectIndex];
 
-            bLuaNative.PopStack();
+            Lua.PopStack();
 
             return obj;
         }
@@ -517,7 +518,7 @@ namespace bLua
 
             try
             {
-                int n = bLuaNative.lua_tointegerx(state, bLuaNative.lua_upvalueindex(1), System.IntPtr.Zero);
+                int n = LuaLibAPI.lua_tointegerx(state, Lua.UpValueIndex(1), System.IntPtr.Zero);
 
                 if (n < 0 || n >= s_entries.Count)
                 {
@@ -527,17 +528,17 @@ namespace bLua
 
                 UserDataRegistryEntry userDataInfo = s_entries[n];
 
-                string str = bLuaNative.lua_getstring(state, 2);
+                string str = Lua.GetString(state, 2);
 
                 UserDataRegistryEntry.PropertyEntry propertyEntry;
                 if (userDataInfo.properties.TryGetValue(str, out propertyEntry))
                 {
                     if (propertyEntry.propertyType == UserDataRegistryEntry.PropertyEntry.Type.Property)
                     {
-                        bLuaNative.lua_checkstack(state, 1);
+                        LuaLibAPI.lua_checkstack(state, 1);
                         //get the iuservalue for the userdata onto the stack.
-                        bLuaNative.lua_getiuservalue(state, 1, 1);
-                        int instanceIndex = bLuaNative.PopInteger();
+                        LuaLibAPI.lua_getiuservalue(state, 1, 1);
+                        int instanceIndex = Lua.PopInteger();
                         object obj = s_liveObjects[instanceIndex];
 
                         object[] args = new object[1];
@@ -551,10 +552,10 @@ namespace bLua
                     }
                     else if (propertyEntry.propertyType == UserDataRegistryEntry.PropertyEntry.Type.Field)
                     {
-                        bLuaNative.lua_checkstack(state, 1);
+                        LuaLibAPI.lua_checkstack(state, 1);
                         //get the iuservalue for the userdata onto the stack.
-                        bLuaNative.lua_getiuservalue(state, 1, 1);
-                        int instanceIndex = bLuaNative.PopInteger();
+                        LuaLibAPI.lua_getiuservalue(state, 1, 1);
+                        int instanceIndex = Lua.PopInteger();
                         object obj = s_liveObjects[instanceIndex];
 
                         var fieldInfo = s_fields[propertyEntry.index];
@@ -576,9 +577,9 @@ namespace bLua
 
         static int GCFunction(System.IntPtr state)
         {
-            bLuaNative.lua_checkstack(state, 1);
-            bLuaNative.lua_getiuservalue(state, 1, 1);
-            int n = bLuaNative.lua_tointegerx(bLuaNative._state, -1, System.IntPtr.Zero);
+            LuaLibAPI.lua_checkstack(state, 1);
+            LuaLibAPI.lua_getiuservalue(state, 1, 1);
+            int n = LuaLibAPI.lua_tointegerx(bLuaNative._state, -1, System.IntPtr.Zero);
             s_liveObjects[n] = null;
             s_liveObjectsFreeList.Add(n);
             return 0;
@@ -655,14 +656,14 @@ namespace bLua
         {
             if (obj == null)
             {
-                bLuaNative.PushNil();
+                Lua.PushNil();
                 return;
             }
             int typeIndex;
             if (s_typenameToEntryIndex.TryGetValue(obj.GetType().Name, out typeIndex) == false)
             {
                 bLuaNative.Error($"Type {obj.GetType().Name} is not marked as a user data. Add [bLuaUserData] to its definition.");
-                bLuaNative.PushNil();
+                Lua.PushNil();
                 return;
             }
 
@@ -692,13 +693,13 @@ namespace bLua
                 s_nNextLiveObject++;
             }
 
-            bLuaNative.lua_newuserdatauv(bLuaNative._state, new System.IntPtr(8), 1);
-            bLuaNative.PushObjectOntoStack(objIndex);
-            bLuaNative.lua_setiuservalue(bLuaNative._state, -2, 1);
-            bLuaNative.PushStack(entry.metatable);
-            bLuaNative.lua_setmetatable(bLuaNative._state, -2);
+            LuaLibAPI.lua_newuserdatauv(bLuaNative._state, new System.IntPtr(8), 1);
+            Lua.PushObjectOntoStack(objIndex);
+            LuaLibAPI.lua_setiuservalue(bLuaNative._state, -2, 1);
+            Lua.PushStack(entry.metatable);
+            LuaLibAPI.lua_setmetatable(bLuaNative._state, -2);
 
-            string msg = bLuaNative.TraceMessage("live object");
+            string msg = Lua.TraceMessage("live object");
 
             s_liveObjects[objIndex] = obj;
         }
@@ -747,7 +748,7 @@ namespace bLua
             {
                 properties = baseProperties,
             };
-            entry.metatable = bLuaNative.NewMetaTable(t.Name);
+            entry.metatable = Lua.NewMetaTable(t.Name);
             entry.metatable.Set("__index", bLuaValue.CreateClosure(IndexFunction, bLuaValue.CreateNumber(typeIndex)));
             entry.metatable.Set("__newindex", bLuaValue.CreateClosure(SetIndexFunction, bLuaValue.CreateNumber(typeIndex)));
             entry.metatable.Set("__gc", _gc);
@@ -796,7 +797,7 @@ namespace bLua
                 };
 
 
-                bLuaNative.LuaCFunction fn;
+                Lua.LuaCFunction fn;
                 if (methodInfo.IsStatic)
                 {
                     fn = CallStaticFunction;
@@ -876,21 +877,21 @@ namespace bLua
             switch (t)
             {
                 case MethodCallInfo.ParamType.Bool:
-                    return bLuaNative.PopBool();
+                    return Lua.PopBool();
                 case MethodCallInfo.ParamType.Double:
-                    return bLuaNative.PopNumber();
+                    return Lua.PopNumber();
                 case MethodCallInfo.ParamType.Float:
-                    return (float)bLuaNative.PopNumber();
+                    return (float)Lua.PopNumber();
                 case MethodCallInfo.ParamType.Int:
-                    return bLuaNative.PopInteger();
+                    return Lua.PopInteger();
                 case MethodCallInfo.ParamType.Str:
-                    return bLuaNative.PopString();
+                    return Lua.PopString();
                 case MethodCallInfo.ParamType.LuaValue:
-                    return bLuaNative.PopStackIntoValue();
+                    return Lua.PopStackIntoValue();
                 case MethodCallInfo.ParamType.UserDataClass:
-                    return bLuaNative.PopStackIntoValue();
+                    return Lua.PopStackIntoValue();
                 default:
-                    bLuaNative.PopStack();
+                    Lua.PopStack();
                     return null;
             }
         }
