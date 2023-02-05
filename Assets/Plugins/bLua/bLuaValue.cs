@@ -266,7 +266,7 @@ namespace bLua
                 }
                 else
                 {
-                    if (bLuaNative.manualGCEnabled)
+                    if (bLuaNative.features.HasFlag(FeatureFlags.CSharpGC))
                     {
                         deleteQueue.Enqueue(refid);
                     }

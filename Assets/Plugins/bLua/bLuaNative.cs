@@ -40,33 +40,20 @@ namespace bLua
         GEN = 10,
         INC = 11,
     }
+    public enum FeatureFlags
+    {
+        None = 0,
+        Coroutines = 1,
+        CSharpGC = 2, // C#-managed garbage collection
+    }
 
     public static class bLuaNative
     {
-        public static void Error(string message, string engineTrace = null)
-        {
-            string msg = Lua.TraceMessage(message);
-            if (engineTrace != null)
-            {
-                msg += "\n\n---\nEngine error details:\n" + engineTrace;
-            }
+        delegate void TickDelegate();
+        static TickDelegate TickHandler;
 
-            Debug.LogError(msg);
-        }
+        public static FeatureFlags features = FeatureFlags.Coroutines;
 
-        public static bLuaValue GetGlobal(string key)
-        {
-            int resType = LuaLibAPI.lua_getglobal(bLuaNative._state, key);
-            var result = Lua.PopStackIntoValue();
-            result.dataType = (bLua.DataType)resType;
-            return result;
-        }
-
-        public static void SetGlobal(string key, bLuaValue val)
-        {
-            Lua.PushStack(val);
-            LuaLibAPI.lua_setglobal(bLuaNative._state, key);
-        }
 
         /// <summary>
         /// Ends the Lua script
@@ -167,14 +154,6 @@ namespace bLua
 
         public static System.IntPtr _state;
 
-        public class LuaException : System.Exception
-        {
-            public LuaException(string message) : base(message)
-            {
-
-            }
-        }
-
         static Dictionary<string, bLuaValue> _lookups = new Dictionary<string, bLuaValue>();
         static public bLuaValue FullLookup(bLuaValue obj, string key)
         {
@@ -187,20 +166,6 @@ namespace bLua
 
             return Call(fn, obj);
         }
-
-
-
-        
-
-        /// <summary> Interim control over the C#-managed Garbage Collection system </summary>
-        static public bool manualGCEnabled = false;
-        static bLuaValue _forcegc = null;
-        static float _lastgc = 0.0f;
-
-        static public int tickDelay = 10; // 10 = 100 ticks per second
-        static bool _ticking = false;
-        static bLuaValue _callco = null;
-        static bLuaValue _updateco = null;
 
         static public Unity.Profiling.ProfilerMarker s_profileLuaGC = new Unity.Profiling.ProfilerMarker("Lua.GC");
         static public Unity.Profiling.ProfilerMarker s_profileLuaCo = new Unity.Profiling.ProfilerMarker("Lua.Coroutine");
@@ -234,13 +199,15 @@ namespace bLua
 
             bLuaUserData.Init();
 
-            _forcegc = DoString(@"return function() collectgarbage() end");
-
-            DoString(@"builtin_coroutines = {}");
-
             SetGlobal("blua", bLuaValue.CreateUserData(new bLuaGlobalLibrary()));
 
-            _callco = DoBuffer("callco", @"return function(fn, a, b, c, d, e, f, g, h)
+            if (features.HasFlag(FeatureFlags.Coroutines))
+            {
+                TickHandler += TickCoroutines;
+
+                DoString(@"builtin_coroutines = {}");
+
+                _callco = DoBuffer("callco", @"return function(fn, a, b, c, d, e, f, g, h)
     local co = coroutine.create(fn)
     local res, error = coroutine.resume(co, a, b, c, d, e, f, g, h)
     blua.print('COROUTINE:: call co: %s -> %s -> %s', type(co), type(fn), coroutine.status(co))
@@ -275,6 +242,13 @@ end");
         builtin_coroutines = new_coroutines
     end
 end");
+            }
+            if (features.HasFlag(FeatureFlags.CSharpGC))
+            {
+                TickHandler += TickGarbageCollection;
+
+                _forcegc = DoString(@"return function() collectgarbage() end");
+            }
 
             //initialize true and false.
             LuaLibAPI.lua_pushboolean(_state, 1);
@@ -309,6 +283,11 @@ end");
             initialized = false;
         }
 
+        #region Tick
+        static public int tickDelay = 10; // 10 = 100 ticks per second
+        static bool _ticking = false;
+
+
         async static void Tick()
         {
             if (_ticking)
@@ -319,45 +298,38 @@ end");
             _ticking = true;
             while (_ticking)
             {
-                // Update Lua Coroutines
-                using (s_profileLuaCo.Auto())
-                {
-                    Call(_updateco);
-
-                    while (_scheduledCoroutines.Count > 0)
-                    {
-                        var co = _scheduledCoroutines[0];
-                        _scheduledCoroutines.RemoveAt(0);
-
-                        CallCoroutine(co.fn, co.args);
-                    }
-                }
-                // End Update Lua Coroutines
-
-                // Garbage Collection
-                if (manualGCEnabled)
-                {
-                    if (bLuaGlobalLibrary.time > _lastgc + 10.0f)
-                    {
-                        using (s_profileLuaGC.Auto())
-                        {
-                            bLuaNative.Call(_forcegc);
-                        }
-                        _lastgc = bLuaGlobalLibrary.time;
-                    }
-
-                    int refid;
-                    while (bLuaValue.deleteQueue.TryDequeue(out refid))
-                    {
-                        Lua.DestroyDynValue(refid);
-                    }
-                }
-                // End Garbage Collection
+                TickHandler.Invoke();
 
                 await Task.Delay(tickDelay);
             }
         }
+        #endregion // Tick
 
+        #region Garbage Collection
+        static bLuaValue _forcegc = null;
+        static float _lastgc = 0.0f;
+
+
+        static void TickGarbageCollection()
+        {
+            if (bLuaGlobalLibrary.time > _lastgc + 10.0f)
+            {
+                using (s_profileLuaGC.Auto())
+                {
+                    bLuaNative.Call(_forcegc);
+                }
+                _lastgc = bLuaGlobalLibrary.time;
+            }
+
+            int refid;
+            while (bLuaValue.deleteQueue.TryDequeue(out refid))
+            {
+                Lua.DestroyDynValue(refid);
+            }
+        }
+        #endregion // Garbage Collection
+
+        #region Coroutines
         struct ScheduledCoroutine
         {
             public bLuaValue fn;
@@ -365,9 +337,30 @@ end");
             public int debugTag;
         }
 
+        static bLuaValue _callco = null;
+        static bLuaValue _updateco = null;
+
         static List<ScheduledCoroutine> _scheduledCoroutines = new List<ScheduledCoroutine>();
 
         static int _ncoroutine = 0;
+
+
+        static void TickCoroutines()
+        {
+            using (s_profileLuaCo.Auto())
+            {
+                Call(_updateco);
+
+                while (_scheduledCoroutines.Count > 0)
+                {
+                    var co = _scheduledCoroutines[0];
+                    _scheduledCoroutines.RemoveAt(0);
+
+                    CallCoroutine(co.fn, co.args);
+                }
+            }
+        }
+
         public static void ScheduleCoroutine(bLuaValue fn, params object[] args)
         {
             ++_ncoroutine;
@@ -406,5 +399,43 @@ end");
 
             Call(_callco, a);
         }
+        #endregion // Coroutines
+
+        #region Globals
+        public static bLuaValue GetGlobal(string key)
+        {
+            int resType = LuaLibAPI.lua_getglobal(bLuaNative._state, key);
+            var result = Lua.PopStackIntoValue();
+            result.dataType = (bLua.DataType)resType;
+            return result;
+        }
+
+        public static void SetGlobal(string key, bLuaValue val)
+        {
+            Lua.PushStack(val);
+            LuaLibAPI.lua_setglobal(bLuaNative._state, key);
+        }
+        #endregion // Globals
+
+        #region Errors
+        public class LuaException : System.Exception
+        {
+            public LuaException(string message) : base(message)
+            {
+
+            }
+        }
+
+        public static void Error(string message, string engineTrace = null)
+        {
+            string msg = Lua.TraceMessage(message);
+            if (engineTrace != null)
+            {
+                msg += "\n\n---\nEngine error details:\n" + engineTrace;
+            }
+
+            Debug.LogError(msg);
+        }
+        #endregion // Errors
     }
 } // bLua namespace
