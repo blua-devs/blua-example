@@ -1,7 +1,6 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.Assertions;
 using System.Runtime.InteropServices;
 using System;
 using System.Threading;
@@ -12,37 +11,6 @@ using UnityEditor;
 
 namespace bLua
 {
-#if UNITY_EDITOR
-    [CustomEditor(typeof(bLuaNative))]
-    public class bLuaNativeEditor : Editor
-    {
-        enum EditorAction
-        {
-            RunTest,
-            RunBenchmark,
-            RunTestCoroutine
-        }
-
-        public override void OnInspectorGUI()
-        {
-            DrawDefaultInspector();
-
-            if (GUILayout.Button("Init"))
-            {
-                bLuaNative.instance.Init();
-            }
-            if (GUILayout.Button("Run Unit Tests"))
-            {
-                bLuaNative.instance.RunUnitTests();
-            }
-            if (GUILayout.Button("Run Test Coroutines"))
-            {
-                bLuaNative.instance.RunTestCoroutine();
-            }
-        }
-    }
-#endif // UNITY_EDITOR
-
     public enum DataType
     {
         Nil = 0,
@@ -72,7 +40,7 @@ namespace bLua
         INC = 11,
     }
 
-    public class bLuaNative : MonoBehaviour
+    public static class bLuaNative
     {
         public static void Error(string message, string engineTrace = null)
         {
@@ -94,127 +62,104 @@ namespace bLua
             return LUA_REGISTRYINDEX - i;
         }
 
-        public static bLuaNative instance;
-
-        public static Script script = null;
-
-        public class Script
+        /// <summary>
+        /// Ends the Lua script
+        /// </summary>
+        public static void Close()
         {
-            public Script()
+            if (_state != System.IntPtr.Zero)
             {
-                _state = luaL_newstate();
-
-                luaL_openlibs(_state);
-
-                //hide these libraries.
-                lua_pushnil(_state);
-                lua_setglobal(_state, "io");
+                lua_close(_state);
+                _state = System.IntPtr.Zero;
             }
+        }
 
-            ~Script()
-            {
-                Close();
-            }
+        /// <summary>
+        /// Loads a string of Lua code and runs it.
+        /// </summary>
+        public static bLuaValue DoString(string code)
+        {
+            return DoBuffer("code", code);
+        }
 
-            /// <summary>
-            /// Ends the Lua script
-            /// </summary>
-            public void Close()
+        /// <summary>
+        /// Loads a buffer as a Lua chunk and runs it.
+        /// </summary>
+        /// <param name="name">The chunk name, used for debug information and error messages.</param>
+        /// <param name="text">The Lua code to load.</param>
+        public static void ExecBuffer(string name, string text, int nresults = 0)
+        {
+            using (s_profileLuaCall.Auto())
             {
-                if (_state != System.IntPtr.Zero)
+                int result = luaL_loadbufferx(_state, text, (ulong)text.Length, name, null);
+                if (result != 0)
                 {
-                    lua_close(_state);
-                    _state = System.IntPtr.Zero;
+                    string msg = lua_getstring(_state, -1);
+                    lua_pop(_state, 1);
+                    throw new LuaException(msg);
+                }
+
+                using (s_profileLuaCallInner.Auto())
+                {
+                    result = lua_pcallk(_state, 0, nresults, 0, 0, System.IntPtr.Zero);
+                }
+
+                if (result != 0)
+                {
+                    string msg = lua_getstring(_state, -1);
+                    lua_pop(_state, 1);
+                    throw new LuaException(msg);
                 }
             }
+        }
 
-            /// <summary>
-            /// Loads a string of Lua code and runs it.
-            /// </summary>
-            public bLuaValue DoString(string code)
-            {
-                return DoBuffer("code", code);
-            }
+        /// <summary>
+        /// Loads a buffer as a Lua chunk and runs it.
+        /// </summary>
+        /// <param name="name">The chunk name, used for debug information and error messages.</param>
+        /// <param name="text">The Lua code to load.</param>
+        public static bLuaValue DoBuffer(string name, string text)
+        {
+            ExecBuffer(name, text, 1);
+            return PopStackIntoValue();
+        }
 
-            /// <summary>
-            /// Loads a buffer as a Lua chunk and runs it.
-            /// </summary>
-            /// <param name="name">The chunk name, used for debug information and error messages.</param>
-            /// <param name="text">The Lua code to load.</param>
-            public void ExecBuffer(string name, string text, int nresults = 0)
+        /// <summary>
+        /// Calls a passed Lua function.
+        /// </summary>
+        /// <param name="fn">The Lua function being called.</param>
+        /// <param name="args">Arguments that will be passed into the called Lua function.</param>
+        /// <returns>The output from the called Lua function.</returns>
+        public static bLuaValue Call(bLua.bLuaValue fn, params object[] args)
+        {
+            using (s_profileLuaCall.Auto())
             {
-                using (s_profileLuaCall.Auto())
+                PushStack(fn);
+
+                foreach (var arg in args)
                 {
-                    int result = luaL_loadbufferx(_state, text, (ulong)text.Length, name, null);
-                    if (result != 0)
-                    {
-                        string msg = lua_getstring(_state, -1);
-                        lua_pop(_state, 1);
-                        throw new LuaException(msg);
-                    }
-
-                    using (s_profileLuaCallInner.Auto())
-                    {
-                        result = lua_pcallk(_state, 0, nresults, 0, 0, System.IntPtr.Zero);
-                    }
-
-                    if (result != 0)
-                    {
-                        string msg = lua_getstring(_state, -1);
-                        lua_pop(_state, 1);
-                        throw new LuaException(msg);
-                    }
+                    PushObjectOntoStack(arg);
                 }
-            }
 
-            /// <summary>
-            /// Loads a buffer as a Lua chunk and runs it.
-            /// </summary>
-            /// <param name="name">The chunk name, used for debug information and error messages.</param>
-            /// <param name="text">The Lua code to load.</param>
-            public bLua.bLuaValue DoBuffer(string name, string text)
-            {
-                ExecBuffer(name, text, 1);
+                int result;
+                //TODO set the error handler to get the stack trace.
+                using (s_profileLuaCallInner.Auto())
+                {
+                    result = lua_pcallk(_state, args.Length, 1, 0, 0L, System.IntPtr.Zero);
+                }
+                if (result != 0)
+                {
+                    string error = lua_getstring(_state, -1);
+                    lua_pop(_state, 1);
+                    bLuaNative.Error($"Error in function call: {error}");
+                    throw new LuaException(error);
+                }
+
                 return PopStackIntoValue();
             }
-
-            /// <summary>
-            /// Calls a passed Lua function.
-            /// </summary>
-            /// <param name="fn">The Lua function being called.</param>
-            /// <param name="args">Arguments that will be passed into the called Lua function.</param>
-            /// <returns>The output from the called Lua function.</returns>
-            public bLua.bLuaValue Call(bLua.bLuaValue fn, params object[] args)
-            {
-                using (s_profileLuaCall.Auto())
-                {
-                    PushStack(fn);
-
-                    foreach (var arg in args)
-                    {
-                        PushObjectOntoStack(arg);
-                    }
-
-                    int result;
-                    //TODO set the error handler to get the stack trace.
-                    using (s_profileLuaCallInner.Auto())
-                    {
-                        result = lua_pcallk(_state, args.Length, 1, 0, 0L, System.IntPtr.Zero);
-                    }
-                    if (result != 0)
-                    {
-                        string error = lua_getstring(_state, -1);
-                        lua_pop(_state, 1);
-                        bLuaNative.Error($"Error in function call: {error}");
-                        throw new LuaException(error);
-                    }
-
-                    return PopStackIntoValue();
-                }
-            }
-
-            public System.IntPtr _state;
         }
+
+        public static System.IntPtr _state;
 
         public class LuaException : System.Exception
         {
@@ -230,79 +175,79 @@ namespace bLua
             bLua.bLuaValue fn;
             if (_lookups.TryGetValue(key, out fn) == false)
             {
-                fn = script.DoBuffer("lookup", $"return function(obj) return obj.{key} end");
+                fn = DoBuffer("lookup", $"return function(obj) return obj.{key} end");
                 _lookups.Add(key, fn);
             }
 
-            return script.Call(fn, obj);
+            return Call(fn, obj);
         }
 
         static public void DestroyDynValue(int refid)
         {
-            if (instance != null)
+            if (_state != System.IntPtr.Zero)
             {
                 //remove the value from the registry.
-                luaL_unref(script._state, LUA_REGISTRYINDEX, refid);
+                luaL_unref(_state, LUA_REGISTRYINDEX, refid);
             }
         }
 
         static public bLua.DataType InspectTypeOnTopOfStack()
         {
-            return (bLua.DataType)lua_type(script._state, -1);
+            return (bLua.DataType)lua_type(_state, -1);
         }
 
         static public void PushObjectOntoStack(bool b)
         {
-            lua_checkstack(script._state, 1);
+            lua_checkstack(_state, 1);
 
-            lua_pushboolean(script._state, b ? 1 : 0);
+            lua_pushboolean(_state, b ? 1 : 0);
         }
 
         static public void PushObjectOntoStack(double d)
         {
-            lua_checkstack(script._state, 1);
+            lua_checkstack(_state, 1);
 
-            lua_pushnumber(script._state, d);
+            lua_pushnumber(_state, d);
         }
 
         static public void PushObjectOntoStack(float d)
         {
-            lua_checkstack(script._state, 1);
+            lua_checkstack(_state, 1);
 
-            lua_pushnumber(script._state, (double)d);
+            lua_pushnumber(_state, (double)d);
         }
 
         static public void PushObjectOntoStack(int d)
         {
-            lua_checkstack(script._state, 1);
+            lua_checkstack(_state, 1);
 
-            lua_pushinteger(script._state, d);
+            lua_pushinteger(_state, d);
         }
 
         static public void PushObjectOntoStack(string d)
         {
-            lua_checkstack(script._state, 1);
+            lua_checkstack(_state, 1);
 
             if (d == null)
             {
                 PushNil();
                 return;
             }
-            lua_pushstring(script._state, d);
+            lua_pushstring(_state, d);
         }
 
         static public void PushNil()
         {
-            lua_checkstack(script._state, 1);
+            lua_checkstack(_state, 1);
 
-            lua_pushnil(script._state);
+            lua_pushnil(_state);
         }
 
         static public void PushNewTable(int reserveArray = 0, int reserveTable = 0)
         {
-            lua_checkstack(script._state, 1);
+            lua_checkstack(_state, 1);
 
-            lua_createtable(script._state, reserveArray, reserveTable);
+            lua_createtable(_state, reserveArray, reserveTable);
         }
 
         static public void PushObjectOntoStack(object obj)
@@ -314,31 +259,31 @@ namespace bLua
                 return;
             }
 
-            lua_checkstack(script._state, 1);
+            lua_checkstack(_state, 1);
 
             if (obj == null)
             {
-                lua_pushnil(script._state);
+                lua_pushnil(_state);
             }
             else if (obj is int)
             {
-                lua_pushinteger(script._state, (int)obj);
+                lua_pushinteger(_state, (int)obj);
             }
             else if (obj is double)
             {
-                lua_pushnumber(script._state, (double)obj);
+                lua_pushnumber(_state, (double)obj);
             }
             else if (obj is float)
             {
-                lua_pushnumber(script._state, (double)(float)obj);
+                lua_pushnumber(_state, (double)(float)obj);
             }
             else if (obj is bool)
             {
-                lua_pushboolean(script._state, ((bool)obj) ? 1 : 0);
+                lua_pushboolean(_state, ((bool)obj) ? 1 : 0);
             }
             else if (obj is string)
             {
-                lua_pushstring(script._state, (string)obj);
+                lua_pushstring(_state, (string)obj);
             }
             else if (obj is LuaCFunction)
             {
@@ -346,14 +291,14 @@ namespace bLua
             }
             else
             {
-                lua_pushnil(script._state);
+                lua_pushnil(_state);
                 bLuaNative.Error($"Unrecognized object pushing onto stack: {obj.GetType().ToString()}");
             }
         }
 
         static public int PushStack(bLua.bLuaValue val)
         {
-            lua_checkstack(script._state, 1);
+            lua_checkstack(_state, 1);
 
             if (val == null)
             {
@@ -361,12 +306,12 @@ namespace bLua
                 return (int)DataType.Nil;
             }
 
-            return lua_rawgeti(script._state, LUA_REGISTRYINDEX, val.refid);
+            return lua_rawgeti(_state, LUA_REGISTRYINDEX, val.refid);
         }
 
         static public object PopStackIntoObject()
         {
-            DataType t = (DataType)lua_type(script._state, -1);
+            DataType t = (DataType)lua_type(_state, -1);
             switch (t)
             {
                 case DataType.Nil:
@@ -385,62 +330,62 @@ namespace bLua
 
         static public double PopNumber()
         {
-            double result = lua_tonumberx(script._state, -1, System.IntPtr.Zero);
-            lua_pop(script._state, 1);
+            double result = lua_tonumberx(_state, -1, System.IntPtr.Zero);
+            lua_pop(_state, 1);
             return result;
         }
 
         static public int PopInteger()
         {
-            int result = lua_tointegerx(script._state, -1, System.IntPtr.Zero);
-            lua_pop(script._state, 1);
+            int result = lua_tointegerx(_state, -1, System.IntPtr.Zero);
+            lua_pop(_state, 1);
             return result;
         }
 
         static public bool PopBool()
         {
-            int result = lua_toboolean(script._state, -1);
-            lua_pop(script._state, 1);
+            int result = lua_toboolean(_state, -1);
+            lua_pop(_state, 1);
             return result != 0;
         }
 
 
         static public string PopString()
         {
-            string result = lua_getstring(script._state, -1);
-            lua_pop(script._state, 1);
+            string result = lua_getstring(_state, -1);
+            lua_pop(_state, 1);
             return result;
         }
 
         static public List<bLua.bLuaValue> PopList()
         {
-            int len = (int)lua_rawlen(script._state, -1);
+            int len = (int)lua_rawlen(_state, -1);
             List<bLuaValue> result = new List<bLuaValue>(len);
 
-            lua_checkstack(script._state, 2);
+            lua_checkstack(_state, 2);
 
             for (int i = 1; i <= len; ++i)
             {
-                lua_geti(script._state, -1, i);
+                lua_geti(_state, -1, i);
                 result.Add(PopStackIntoValue());
             }
 
             //we're actually popping the list off.
-            lua_pop(script._state, 1);
+            lua_pop(_state, 1);
 
             return result;
         }
 
         static public List<string> PopListOfStrings()
         {
-            lua_checkstack(script._state, 2);
+            lua_checkstack(_state, 2);
 
-            int len = (int)lua_rawlen(script._state, -1);
+            int len = (int)lua_rawlen(_state, -1);
             List<string> result = new List<string>(len);
 
             for (int i = 1; i <= len; ++i)
             {
-                int t = lua_geti(script._state, -1, i);
+                int t = lua_geti(_state, -1, i);
                 if (t == (int)DataType.String)
                 {
                     result.Add(PopString());
@@ -452,7 +397,7 @@ namespace bLua
             }
 
             //we're actually popping the list off.
-            lua_pop(script._state, 1);
+            lua_pop(_state, 1);
 
             return result;
         }
@@ -461,21 +406,21 @@ namespace bLua
         static public Dictionary<string, bLuaValue> PopDict()
         {
             Dictionary<string, bLuaValue> result = new Dictionary<string, bLuaValue>();
-            lua_pushnil(script._state);
-            while (lua_next(script._state, -2) != 0)
+            lua_pushnil(_state);
+            while (lua_next(_state, -2) != 0)
             {
-                if (lua_type(script._state, -2) != (int)DataType.String)
+                if (lua_type(_state, -2) != (int)DataType.String)
                 {
-                    lua_pop(script._state, 1);
+                    lua_pop(_state, 1);
                     continue;
                 }
 
-                string key = lua_getstring(script._state, -2);
+                string key = lua_getstring(_state, -2);
                 result.Add(key, PopStackIntoValue());
             }
 
             //pop the table off the stack.
-            lua_pop(script._state, 1);
+            lua_pop(_state, 1);
 
             return result;
         }
@@ -483,8 +428,8 @@ namespace bLua
         static public List<bLuaValue.Pair> PopFullDict()
         {
             List<bLuaValue.Pair> result = new List<bLuaValue.Pair>();
-            lua_pushnil(script._state);
-            while (lua_next(script._state, -2) != 0)
+            lua_pushnil(_state);
+            while (lua_next(_state, -2) != 0)
             {
                 var val = PopStackIntoValue();
                 var key = PopStackIntoValue();
@@ -498,48 +443,48 @@ namespace bLua
             }
 
             //pop the table off the stack.
-            lua_pop(script._state, 1);
+            lua_pop(_state, 1);
 
             return result;
         }
 
         static public bool PopTableHasNonInts()
         {
-            lua_pushnil(script._state);
-            while (lua_next(script._state, -2) != 0)
+            lua_pushnil(_state);
+            while (lua_next(_state, -2) != 0)
             {
                 var val = PopStackIntoValue();
 
-                if (lua_type(script._state, -1) != (int)DataType.String)
+                if (lua_type(_state, -1) != (int)DataType.String)
                 {
                     //pop key, value, and table.
-                    lua_pop(script._state, 3);
+                    lua_pop(_state, 3);
                     return true;
                 }
 
                 //just pop value, key goes with next.
-                lua_pop(script._state, 1);
+                lua_pop(_state, 1);
             }
 
             //pop the table off the stack.
-            lua_pop(script._state, 1);
+            lua_pop(_state, 1);
 
             return false;
         }
 
         static public bool PopTableEmpty()
         {
-            lua_pushnil(script._state);
+            lua_pushnil(_state);
 
-            bool result = (lua_next(script._state, -2) == 0);
-            lua_pop(script._state, result ? 1 : 3); //if empty pop just the table, otherwise the table and the key/value pair.
+            bool result = (lua_next(_state, -2) == 0);
+            lua_pop(_state, result ? 1 : 3); //if empty pop just the table, otherwise the table and the key/value pair.
 
             return result;
         }
 
         static public bLua.bLuaValue GetGlobal(string key)
         {
-            int resType = lua_getglobal(script._state, key);
+            int resType = lua_getglobal(_state, key);
             var result = PopStackIntoValue();
             result.dataType = (bLua.DataType)resType;
             return result;
@@ -548,54 +493,54 @@ namespace bLua
         static public void SetGlobal(string key, bLuaValue val)
         {
             PushStack(val);
-            lua_setglobal(script._state, key);
+            lua_setglobal(_state, key);
         }
 
         static public void PopStack()
         {
-            lua_pop(script._state, 1);
+            lua_pop(_state, 1);
         }
 
         static public bLua.bLuaValue NewBoolean(bool val)
         {
-            lua_checkstack(script._state, 1);
-            lua_pushboolean(script._state, val ? 1 : 0);
+            lua_checkstack(_state, 1);
+            lua_pushboolean(_state, val ? 1 : 0);
             return PopStackIntoValue();
         }
 
         static public bLua.bLuaValue NewNumber(double val)
         {
-            lua_checkstack(script._state, 1);
-            lua_pushnumber(script._state, val);
+            lua_checkstack(_state, 1);
+            lua_pushnumber(_state, val);
             return PopStackIntoValue();
         }
 
         static public bLua.bLuaValue NewString(string val)
         {
-            lua_checkstack(script._state, 1);
-            lua_pushstring(script._state, val);
+            lua_checkstack(_state, 1);
+            lua_pushstring(_state, val);
             return PopStackIntoValue();
         }
 
         static public bLua.bLuaValue PopStackIntoValue()
         {
-            int t = lua_type(script._state, -1);
+            int t = lua_type(_state, -1);
             switch (t)
             {
                 case (int)DataType.Nil:
-                    lua_pop(script._state, 1);
+                    lua_pop(_state, 1);
                     return bLuaValue.Nil;
                 case (int)DataType.Boolean:
                     {
-                        int val = lua_toboolean(script._state, -1);
-                        lua_pop(script._state, 1);
+                        int val = lua_toboolean(_state, -1);
+                        lua_pop(_state, 1);
                         return val != 0 ? bLuaValue.True : bLuaValue.False;
                     }
 
                 default:
                     {
                         //pops the value on top of the stack and makes a reference to it.
-                        int refid = luaL_ref(script._state, LUA_REGISTRYINDEX);
+                        int refid = luaL_ref(_state, LUA_REGISTRYINDEX);
 
                         return new bLua.bLuaValue(refid);
                     }
@@ -607,7 +552,7 @@ namespace bLua
         {
             PushStack(tbl);
             PushObjectOntoStack(key);
-            DataType t = (DataType)lua_gettable(script._state, -2);
+            DataType t = (DataType)lua_gettable(_state, -2);
             var result = PopStackIntoValue(); //pop the result value out.
             result.dataType = t;
             PopStack(); //pop the table out and discard it.
@@ -618,7 +563,7 @@ namespace bLua
         {
             PushStack(tbl);
             PushObjectOntoStack(key);
-            DataType t = (DataType)lua_gettable(script._state, -2);
+            DataType t = (DataType)lua_gettable(_state, -2);
             var result = PopStackIntoValue(); //pop the result value out.
             result.dataType = t;
             PopStack(); //pop the table out and discard it.
@@ -629,7 +574,7 @@ namespace bLua
         {
             PushStack(tbl);
             PushObjectOntoStack(key);
-            DataType t = (DataType)lua_rawget(script._state, -2);
+            DataType t = (DataType)lua_rawget(_state, -2);
             var result = PopStackIntoValue(); //pop the result value out.
             result.dataType = t;
             PopStack(); //pop the table out and discard it.
@@ -641,7 +586,7 @@ namespace bLua
         {
             PushStack(tbl);
             PushObjectOntoStack(key);
-            DataType t = (DataType)lua_rawget(script._state, -2);
+            DataType t = (DataType)lua_rawget(_state, -2);
             var result = PopStackIntoValue(); //pop the result value out.
             result.dataType = t;
             PopStack(); //pop the table out and discard it.
@@ -655,7 +600,7 @@ namespace bLua
             PushStack(tbl);
             PushStack(key);
             PushStack(val);
-            lua_settable(script._state, -3);
+            lua_settable(_state, -3);
             PopStack();
         }
 
@@ -664,7 +609,7 @@ namespace bLua
             PushStack(tbl);
             PushObjectOntoStack(key);
             PushStack(val);
-            lua_settable(script._state, -3);
+            lua_settable(_state, -3);
             PopStack();
         }
 
@@ -673,7 +618,7 @@ namespace bLua
             PushStack(tbl);
             PushObjectOntoStack(key);
             PushObjectOntoStack(val);
-            lua_settable(script._state, -3);
+            lua_settable(_state, -3);
             PopStack();
         }
 
@@ -682,7 +627,7 @@ namespace bLua
             PushStack(tbl);
             PushObjectOntoStack(key);
             PushObjectOntoStack(val);
-            lua_settable(script._state, -3);
+            lua_settable(_state, -3);
             PopStack();
         }
 
@@ -690,7 +635,7 @@ namespace bLua
         static public int Length(bLua.bLuaValue val)
         {
             PushStack(val);
-            uint result = lua_rawlen(script._state, -1);
+            uint result = lua_rawlen(_state, -1);
             PopStack();
 
             return (int)result;
@@ -699,9 +644,9 @@ namespace bLua
         //index -- remember, 1-based!
         static public bLuaValue Index(bLua.bLuaValue val, int index)
         {
-            lua_checkstack(script._state, 3);
+            lua_checkstack(_state, 3);
             PushStack(val);
-            lua_geti(script._state, -1, index);
+            lua_geti(_state, -1, index);
             var result = PopStackIntoValue();
             PopStack();
             return result;
@@ -711,25 +656,25 @@ namespace bLua
         {
             PushStack(array);
             PushStack(newVal);
-            lua_seti(script._state, -2, index);
+            lua_seti(_state, -2, index);
             PopStack();
         }
 
         static public void AppendArray(bLuaValue array, bLuaValue newVal)
         {
             PushStack(array);
-            int len = (int)lua_rawlen(script._state, -1);
+            int len = (int)lua_rawlen(_state, -1);
             PushStack(newVal);
-            lua_seti(script._state, -2, len + 1);
+            lua_seti(_state, -2, len + 1);
             PopStack();
         }
 
         static public void AppendArray(bLuaValue array, object newVal)
         {
             PushStack(array);
-            int len = (int)lua_rawlen(script._state, -1);
+            int len = (int)lua_rawlen(_state, -1);
             PushObjectOntoStack(newVal);
-            lua_seti(script._state, -2, len + 1);
+            lua_seti(_state, -2, len + 1);
             PopStack();
         }
 
@@ -739,9 +684,9 @@ namespace bLua
             {
                 message = "stack";
             }
-            lua_checkstack(script._state, 1);
+            lua_checkstack(_state, 1);
 
-            luaL_traceback(script._state, script._state, message, level);
+            luaL_traceback(_state, _state, message, level);
             return PopString();
         }
 
@@ -878,7 +823,7 @@ namespace bLua
 
         public static void lua_pushcfunction(LuaCFunction fn)
         {
-            lua_pushcclosure(script._state, Marshal.GetFunctionPointerForDelegate(fn), 0);
+            lua_pushcclosure(_state, Marshal.GetFunctionPointerForDelegate(fn), 0);
         }
 
         public static void PushClosure(LuaCFunction fn, bLuaValue[] upvalues)
@@ -888,7 +833,7 @@ namespace bLua
                 PushStack(upvalues[i]);
             }
 
-            lua_pushcclosure(script._state, Marshal.GetFunctionPointerForDelegate(fn), upvalues.Length);
+            lua_pushcclosure(_state, Marshal.GetFunctionPointerForDelegate(fn), upvalues.Length);
         }
 
         [DllImport(_dllName)]
@@ -911,7 +856,7 @@ namespace bLua
 
         public static bLuaValue NewMetaTable(string tname)
         {
-            luaL_newmetatable(script._state, tname);
+            luaL_newmetatable(_state, tname);
             return PopStackIntoValue();
         }
 
@@ -999,56 +944,53 @@ namespace bLua
 
         /// <summary> Interim control over the C#-managed Garbage Collection system </summary>
         static public bool manualGCEnabled = false;
-        bLuaValue _forcegc = null;
-        float _lastgc = 0.0f;
+        static bLuaValue _forcegc = null;
+        static float _lastgc = 0.0f;
 
         static public int tickDelay = 10; // 10 = 100 ticks per second
-        bool _ticking = false;
-        bLuaValue _callco = null;
-        bLuaValue _updateco = null;
+        static bool _ticking = false;
+        static bLuaValue _callco = null;
+        static bLuaValue _updateco = null;
 
         static public Unity.Profiling.ProfilerMarker s_profileLuaGC = new Unity.Profiling.ProfilerMarker("Lua.GC");
         static public Unity.Profiling.ProfilerMarker s_profileLuaCo = new Unity.Profiling.ProfilerMarker("Lua.Coroutine");
         static public Unity.Profiling.ProfilerMarker s_profileLuaCall = new Unity.Profiling.ProfilerMarker("Lua.Call");
         static public Unity.Profiling.ProfilerMarker s_profileLuaCallInner = new Unity.Profiling.ProfilerMarker("Lua.CallInner");
 
+
+        static bool initialized = false;
+        public static void Init()
+        {
 #if UNITY_EDITOR
-        private void OnValidate()
-        {
-            if (!Application.isPlaying)
+            if (!EditorApplication.isPlaying
+                && initialized)
             {
-                Init();
+                DeInit();
             }
-        }
-#endif // UNITY_EDITOR
+#endif
+            if (initialized)
+            {
+                return;
+            }
+            initialized = true;
 
-        void Start()
-        {
-            Init();
-        }
+            _state = luaL_newstate();
 
-        private void OnDestroy()
-        {
-            DeInit();
-        }
+            luaL_openlibs(_state);
 
-        public void Init()
-        {
-            DeInit();
-
-            instance = this;
-
-            script = new Script();
+            //hide these libraries.
+            lua_pushnil(_state);
+            lua_setglobal(_state, "io");
 
             bLua.bLuaUserData.Init();
 
-            _forcegc = script.DoString(@"return function() collectgarbage() end");
+            _forcegc = DoString(@"return function() collectgarbage() end");
 
-            script.DoString(@"builtin_coroutines = {}");
+            DoString(@"builtin_coroutines = {}");
 
             SetGlobal("blua", bLuaValue.CreateUserData(new bLuaGlobalLibrary()));
 
-            _callco = script.DoBuffer("callco", @"return function(fn, a, b, c, d, e, f, g, h)
+            _callco = DoBuffer("callco", @"return function(fn, a, b, c, d, e, f, g, h)
     local co = coroutine.create(fn)
     local res, error = coroutine.resume(co, a, b, c, d, e, f, g, h)
     blua.print('COROUTINE:: call co: %s -> %s -> %s', type(co), type(fn), coroutine.status(co))
@@ -1060,7 +1002,7 @@ namespace bLua
     end
 end");
 
-            _updateco = script.DoBuffer("updateco", @"return function()
+            _updateco = DoBuffer("updateco", @"return function()
     local allRunning = true
     for _,co in ipairs(builtin_coroutines) do
         local res, error = coroutine.resume(co)
@@ -1085,43 +1027,39 @@ end");
 end");
 
             //initialize true and false.
-            lua_pushboolean(script._state, 1);
+            lua_pushboolean(_state, 1);
 
             //pops the value on top of the stack and makes a reference to it.
-            int refid = luaL_ref(script._state, LUA_REGISTRYINDEX);
+            int refid = luaL_ref(_state, LUA_REGISTRYINDEX);
             bLuaValue.True = new bLuaValue(refid);
 
-            lua_pushboolean(script._state, 0);
+            lua_pushboolean(_state, 0);
 
             //pops the value on top of the stack and makes a reference to it.
-            refid = luaL_ref(script._state, LUA_REGISTRYINDEX);
+            refid = luaL_ref(_state, LUA_REGISTRYINDEX);
             bLuaValue.False = new bLuaValue(refid);
 
             Tick();
         }
 
-        public void DeInit()
+        public static void DeInit()
         {
             _ticking = false;
 
-            if (script != null)
-            {
-                script.Close();
-                script = null;
-            }
+            Close();
 
             _lookups.Clear();
             _forcegc = null;
             _callco = null;
             _updateco = null;
 
-            instance = null;
-
             bLua.bLuaValue.DeInit();
             bLua.bLuaUserData.DeInit();
+
+            initialized = false;
         }
 
-        async void Tick()
+        async static void Tick()
         {
             if (_ticking)
             {
@@ -1134,7 +1072,7 @@ end");
                 // Update Lua Coroutines
                 using (s_profileLuaCo.Auto())
                 {
-                    script.Call(_updateco);
+                    Call(_updateco);
 
                     while (_scheduledCoroutines.Count > 0)
                     {
@@ -1153,7 +1091,7 @@ end");
                     {
                         using (s_profileLuaGC.Auto())
                         {
-                            bLuaNative.script.Call(_forcegc);
+                            bLuaNative.Call(_forcegc);
                         }
                         _lastgc = bLuaGlobalLibrary.time;
                     }
@@ -1177,10 +1115,10 @@ end");
             public int debugTag;
         }
 
-        List<ScheduledCoroutine> _scheduledCoroutines = new List<ScheduledCoroutine>();
+        static List<ScheduledCoroutine> _scheduledCoroutines = new List<ScheduledCoroutine>();
 
         static int _ncoroutine = 0;
-        public void ScheduleCoroutine(bLuaValue fn, params object[] args)
+        public static void ScheduleCoroutine(bLuaValue fn, params object[] args)
         {
             ++_ncoroutine;
             _scheduledCoroutines.Add(new ScheduledCoroutine()
@@ -1191,12 +1129,12 @@ end");
             });
         }
 
-        public int numRunningCoroutines
+        public static int numRunningCoroutines
         {
             get
             {
-                lua_getglobal(bLuaNative.script._state, "builtin_coroutines");
-                int len = (int)lua_rawlen(bLuaNative.script._state, -1);
+                lua_getglobal(bLuaNative._state, "builtin_coroutines");
+                int len = (int)lua_rawlen(bLuaNative._state, -1);
                 PopStack();
                 return len;
             }
@@ -1213,6 +1151,7 @@ end");
             return System.Text.UTF8Encoding.UTF8.GetString(b);
         }
 
+        /*
         public static int LuaPrint(System.IntPtr state)
         {
             System.Text.StringBuilder sb = new System.Text.StringBuilder();
@@ -1256,8 +1195,9 @@ end");
             Debug.Log($"LUA: {sb.ToString()}");
             return 0;
         }
+        */
 
-        public void CallCoroutine(bLuaValue fn, params object[] args)
+        public static void CallCoroutine(bLuaValue fn, params object[] args)
         {
             int nargs = args != null ? args.Length : 0;
 
@@ -1271,197 +1211,7 @@ end");
                 }
             }
 
-            script.Call(_callco, a);
+            Call(_callco, a);
         }
-
-#if UNITY_EDITOR
-        public void RunUnitTests()
-        {
-            int stackSize = lua_gettop(script._state);
-
-            bLuaNative.script.ExecBuffer("main", @"
-print('hello world')
-MyFunctions = {
-}
-
-function MyFunctions.blah(y)
-    return y
-end
-
-function myfunction(x)
-    return x + 5
-end
-
-function lotsofargs(a,b,c,d,e,f,g)
-    return a+b+c+d+e+f+g
-end
-
-function make_table()
-    return {
-        xyz = 5,
-        abc = 9,
-        def = 7,
-    }
-end
-
-function add_from_table(options)
-    return options.a + options.b + options.c
-end
-
-
-function make_big_table()
-    local result = {}
-    for i=1,1000 do
-        result[tostring(i)] = i
-    end
-    return result
-end
-
-function test_userdata(u)
-    return u.StaticFunction(0) + u.StaticFunction(2,3,4) + u:MyFunction() + u.propertyTest
-end
-
-function incr_userdata(a)
-    a.propertyTest = a.propertyTest + 1
-end
-
-function test_addstrings(x, a, b)
-    return x:AddStrings(a,b)
-end
-
-function test_field(x)
-    x.n = x.n + 2
-    return x.n
-end
-
-function test_varargs(x)
-    x:VarArgsParamsFunction(3, x, x, 4, x)
-    return x:VarArgsFunction(2, 3, 4, 5, 6)
-end
-
-function test_classproperty(x, n)
-    return x.Create(n).n
-end");
-
-            using (bLua.bLuaValue fn = GetGlobal("myfunction"))
-            {
-                var result = script.Call(fn, 8);
-                Assert.AreEqual(result.Number, 13.0);
-            }
-
-            using (bLua.bLuaValue fn = FullLookup(GetGlobal("MyFunctions"), "blah"))
-            {
-                Assert.AreEqual(script.Call(fn, 12).Number, 12.0);
-
-                Assert.AreEqual(lua_gettop(script._state), stackSize);
-            }
-
-            using (bLua.bLuaValue fn = GetGlobal("make_table"))
-            {
-                bLuaValue t = script.Call(fn);
-                Dictionary<string, bLuaValue> tab = t.Dict();
-                Assert.AreEqual(tab.Count, 3);
-                Assert.AreEqual(tab["abc"].Number, 9);
-            }
-
-            using (bLua.bLuaValue fn = GetGlobal("add_from_table"))
-            {
-                bLuaValue v = bLuaValue.CreateTable();
-                v.Set("a", bLuaValue.CreateNumber(4));
-                v.Set("b", bLuaValue.CreateNumber(5));
-                v.Set("c", bLuaValue.CreateNumber(6));
-                bLuaValue t = fn.Call(v);
-                Assert.AreEqual(t.Number, 15);
-            }
-
-            using (bLuaValue fn = bLuaValue.CreateFunction(TestCFunction))
-            {
-                Assert.AreEqual(fn.Call().Number, 5);
-            }
-
-            using (bLuaValue fn = GetGlobal("test_userdata"))
-            {
-                var userdata = bLuaValue.CreateUserData(new TestUserDataClass() { n = 7 });
-                Assert.AreEqual(fn.Call(userdata).Number, 40);
-                using (bLuaValue fn2 = GetGlobal("incr_userdata"))
-                {
-                    fn2.Call(userdata);
-                    Assert.AreEqual(fn.Call(userdata).Number, 42);
-                }
-            }
-
-            using (bLuaValue fn = GetGlobal("test_addstrings"))
-            {
-                var userdata = bLuaValue.CreateUserData(new TestUserDataClass() { n = 7 });
-                Assert.AreEqual(fn.Call(userdata, "abc:", bLuaValue.CreateString("def")).String, "abc:def");
-            }
-
-            using (bLuaValue fn = GetGlobal("test_varargs"))
-            {
-                var userdata = bLuaValue.CreateUserData(new TestUserDataClass() { n = 7 });
-                Assert.AreEqual(fn.Call(userdata).Number, 20);
-            }
-
-
-            using (bLuaValue fn = GetGlobal("test_field"))
-            {
-                var userdata = bLuaValue.CreateUserData(new TestUserDataClass() { n = 7 });
-                Assert.AreEqual(fn.Call(userdata).Number, 9.0);
-            }
-
-            using (bLuaValue fn = GetGlobal("test_field"))
-            {
-                var userdata = bLuaValue.CreateUserData(new TestUserDataClassDerived() { n = 7 });
-                Assert.AreEqual(fn.Call(userdata).Number, 9.0);
-            }
-
-            using (bLuaValue fn = GetGlobal("test_classproperty"))
-            {
-                var userdata = bLuaValue.CreateUserData(new TestUserDataClassDerived() { n = 7 });
-                Assert.AreEqual(fn.Call(userdata, 7.0).Number, 7.0);
-            }
-
-            Debug.Log("Lua: Ran unit tests");
-
-            Assert.AreEqual(lua_gettop(script._state), stackSize);
-        }
-
-        public void RunTestCoroutine()
-        {
-            SetGlobal("blua", bLuaValue.CreateUserData(new bLuaGlobalLibrary()));
-
-            bLuaNative.script.ExecBuffer("co", @"function testYield(x)
-    for i=1,x do
-        blua.print('co: ' .. i)
-        coroutine.yield()
-    end
-end
-
-function testWait(x)
-    blua.print('waiting ' .. x .. ' seconds')
-    local startTime = blua.time
-    while blua.time < startTime + x do
-        coroutine.yield()
-    end
-    blua.print('done waiting')
-end");
-
-            using (bLua.bLuaValue fn = GetGlobal("testYield"))
-            {
-                CallCoroutine(fn, 5);
-            }
-
-            using (bLua.bLuaValue fn = GetGlobal("testWait"))
-            {
-                CallCoroutine(fn, 2);
-            }
-        }
-
-        public static int TestCFunction(System.IntPtr state)
-        {
-            lua_pushinteger(state, 5);
-            return 1;
-        }
-#endif // UNITY_EDITOR
     }
 } // bLua namespace

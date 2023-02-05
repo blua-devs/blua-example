@@ -170,8 +170,8 @@ namespace bLua
 
         static int CallFunction(System.IntPtr state)
         {
-            var stateBack = bLuaNative.script._state;
-            bLuaNative.script._state = state;
+            var stateBack = bLuaNative._state;
+            bLuaNative._state = state;
 
             try
             {
@@ -282,14 +282,14 @@ namespace bLua
                 return 0;
             } finally
             {
-                bLuaNative.script._state = stateBack;
+                bLuaNative._state = stateBack;
             }
         }
 
         static int CallStaticFunction(System.IntPtr state)
         {
-            var stateBack = bLuaNative.script._state;
-            bLuaNative.script._state = state;
+            var stateBack = bLuaNative._state;
+            bLuaNative._state = state;
 
             try
             {
@@ -362,7 +362,7 @@ namespace bLua
                 return 0;
             } finally
             {
-                bLuaNative.script._state = stateBack;
+                bLuaNative._state = stateBack;
             }
         }
 
@@ -416,10 +416,10 @@ namespace bLua
 
         static int IndexFunction(System.IntPtr state)
         {
-            var stateBack = bLuaNative.script._state;
+            var stateBack = bLuaNative._state;
             try
             {
-                bLuaNative.script._state = state;
+                bLuaNative._state = state;
 
                 int n = bLuaNative.lua_tointegerx(state, bLuaNative.lua_upvalueindex(1), System.IntPtr.Zero);
 
@@ -486,14 +486,14 @@ namespace bLua
                 return 1;
             } finally
             {
-                bLuaNative.script._state = stateBack;
+                bLuaNative._state = stateBack;
             }
         }
 
         static public object GetUserDataObject(int nstack)
         {
-            bLuaNative.lua_checkstack(bLuaNative.script._state, 1);
-            int ntype = bLuaNative.lua_getiuservalue(bLuaNative.script._state, nstack, 1);
+            bLuaNative.lua_checkstack(bLuaNative._state, 1);
+            int ntype = bLuaNative.lua_getiuservalue(bLuaNative._state, nstack, 1);
             if (ntype != (int)DataType.Number)
             {
                 bLuaNative.Error($"Could not find valid user data object");
@@ -501,7 +501,7 @@ namespace bLua
                 return null;
             }
 
-            int liveObjectIndex = bLuaNative.lua_tointegerx(bLuaNative.script._state, -1, System.IntPtr.Zero);
+            int liveObjectIndex = bLuaNative.lua_tointegerx(bLuaNative._state, -1, System.IntPtr.Zero);
 
             object obj = s_liveObjects[liveObjectIndex];
 
@@ -512,8 +512,8 @@ namespace bLua
 
         static int SetIndexFunction(System.IntPtr state)
         {
-            var stateBack = bLuaNative.script._state;
-            bLuaNative.script._state = state;
+            var stateBack = bLuaNative._state;
+            bLuaNative._state = state;
 
             try
             {
@@ -570,7 +570,7 @@ namespace bLua
                 return 0;
             } finally
             {
-                bLuaNative.script._state = stateBack;
+                bLuaNative._state = stateBack;
             }
         }
 
@@ -578,7 +578,7 @@ namespace bLua
         {
             bLuaNative.lua_checkstack(state, 1);
             bLuaNative.lua_getiuservalue(state, 1, 1);
-            int n = bLuaNative.lua_tointegerx(bLuaNative.script._state, -1, System.IntPtr.Zero);
+            int n = bLuaNative.lua_tointegerx(bLuaNative._state, -1, System.IntPtr.Zero);
             s_liveObjects[n] = null;
             s_liveObjectsFreeList.Add(n);
             return 0;
@@ -692,11 +692,11 @@ namespace bLua
                 s_nNextLiveObject++;
             }
 
-            bLuaNative.lua_newuserdatauv(bLuaNative.script._state, new System.IntPtr(8), 1);
+            bLuaNative.lua_newuserdatauv(bLuaNative._state, new System.IntPtr(8), 1);
             bLuaNative.PushObjectOntoStack(objIndex);
-            bLuaNative.lua_setiuservalue(bLuaNative.script._state, -2, 1);
+            bLuaNative.lua_setiuservalue(bLuaNative._state, -2, 1);
             bLuaNative.PushStack(entry.metatable);
-            bLuaNative.lua_setmetatable(bLuaNative.script._state, -2);
+            bLuaNative.lua_setmetatable(bLuaNative._state, -2);
 
             string msg = bLuaNative.TraceMessage("live object");
 

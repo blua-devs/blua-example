@@ -34,31 +34,25 @@ public class bLuaBenchmark : Benchmark
     protected override void Init()
     {
         identifier = "bLua";
+
+        bLuaNative.Init();
     }
 
 
     protected override object GetScript()
     {
-        return bLuaNative.script;
+        return null;
     }
 
     protected override object RegisterUserData(object script)
     {
-        bLuaNative.Script bLuaScript = script as bLuaNative.Script;
-        if (bLuaScript != null)
-        {
-            bLuaUserData.Register(typeof(BenchmarkUserData));
-            bLuaNative.SetGlobal("UserData", bLuaValue.CreateUserData(new BenchmarkUserData()));
-        }
-        return bLuaScript;
+        bLuaUserData.Register(typeof(BenchmarkUserData));
+        bLuaNative.SetGlobal("UserData", bLuaValue.CreateUserData(new BenchmarkUserData()));
+        return script;
     }
 
     protected override void RunBenchmark(object script, string lua)
     {
-        bLuaNative.Script bLuaScript = script as bLuaNative.Script;
-        if (bLuaScript != null)
-        {
-            bLuaScript.ExecBuffer("benchmark", lua);
-        }
+        bLuaNative.ExecBuffer("benchmark", lua);
     }
 }
