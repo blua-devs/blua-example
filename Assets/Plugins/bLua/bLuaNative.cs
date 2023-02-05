@@ -3,6 +3,9 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Assertions;
 using System.Runtime.InteropServices;
+using System;
+using System.Threading;
+using System.Threading.Tasks;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -32,7 +35,7 @@ namespace bLua
             {
                 bLuaNative.instance.RunUnitTests();
             }
-            if (GUILayout.Button("Run Test Coroutine"))
+            if (GUILayout.Button("Run Test Coroutines"))
             {
                 bLuaNative.instance.RunTestCoroutine();
             }
@@ -999,6 +1002,8 @@ namespace bLua
         bLuaValue _forcegc = null;
         float _lastgc = 0.0f;
 
+        static public int tickDelay = 10; // 10 = 100 ticks per second
+        bool _ticking = false;
         bLuaValue _callco = null;
         bLuaValue _updateco = null;
 
@@ -1022,41 +1027,6 @@ namespace bLua
             Init();
         }
 
-        void Update()
-        {
-            using (s_profileLuaCo.Auto())
-            {
-                script.Call(_updateco);
-
-                while (_scheduledCoroutines.Count > 0)
-                {
-                    var co = _scheduledCoroutines[0];
-                    _scheduledCoroutines.RemoveAt(0);
-
-                    CallCoroutine(co.fn, co.args);
-                }
-            }
-
-            if (manualGCEnabled)
-            {
-                if (Time.time > _lastgc + 10.0f)
-                {
-                    using (s_profileLuaGC.Auto())
-                    {
-                        Debug.Log("Run garbage collection");
-                        bLuaNative.script.Call(_forcegc);
-                    }
-                    _lastgc = Time.time;
-                }
-
-                int refid;
-                while (bLua.bLuaValue.deleteQueue.TryDequeue(out refid))
-                {
-                    DestroyDynValue(refid);
-                }
-            }
-        }
-
         private void OnDestroy()
         {
             DeInit();
@@ -1070,19 +1040,20 @@ namespace bLua
 
             script = new Script();
 
+            bLua.bLuaUserData.Init();
+
             _forcegc = script.DoString(@"return function() collectgarbage() end");
 
             script.DoString(@"builtin_coroutines = {}");
 
-            lua_pushcfunction(LuaPrint);
-            lua_setglobal(script._state, "print");
+            SetGlobal("blua", bLuaValue.CreateUserData(new bLuaGlobalLibrary()));
 
             _callco = script.DoBuffer("callco", @"return function(fn, a, b, c, d, e, f, g, h)
     local co = coroutine.create(fn)
     local res, error = coroutine.resume(co, a, b, c, d, e, f, g, h)
-    print('COROUTINE:: call co: %s -> %s -> %s', type(co), type(fn), coroutine.status(co))
+    blua.print('COROUTINE:: call co: %s -> %s -> %s', type(co), type(fn), coroutine.status(co))
     if not res then
-        print(string.format('error in co-routine: %s', error))
+        blua.print(string.format('error in co-routine: %s', error))
     end
     if coroutine.status(co) ~= 'dead' then
         builtin_coroutines[#builtin_coroutines+1] = co
@@ -1094,7 +1065,7 @@ end");
     for _,co in ipairs(builtin_coroutines) do
         local res, error = coroutine.resume(co)
         if not res then
-            print(string.format('error in co-routine: %s', error))
+            blua.print(string.format('error in co-routine: %s', error))
         end
         if coroutine.status(co) == 'dead' then
             allRunning = false
@@ -1126,11 +1097,13 @@ end");
             refid = luaL_ref(script._state, LUA_REGISTRYINDEX);
             bLuaValue.False = new bLuaValue(refid);
 
-            bLua.bLuaUserData.Init();
+            Tick();
         }
 
         public void DeInit()
         {
+            _ticking = false;
+
             if (script != null)
             {
                 script.Close();
@@ -1146,6 +1119,55 @@ end");
 
             bLua.bLuaValue.DeInit();
             bLua.bLuaUserData.DeInit();
+        }
+
+        async void Tick()
+        {
+            if (_ticking)
+            {
+                return;
+            }
+
+            _ticking = true;
+            while (_ticking)
+            {
+                // Update Lua Coroutines
+                using (s_profileLuaCo.Auto())
+                {
+                    script.Call(_updateco);
+
+                    while (_scheduledCoroutines.Count > 0)
+                    {
+                        var co = _scheduledCoroutines[0];
+                        _scheduledCoroutines.RemoveAt(0);
+
+                        CallCoroutine(co.fn, co.args);
+                    }
+                }
+                // End Update Lua Coroutines
+
+                // Garbage Collection
+                if (manualGCEnabled)
+                {
+                    if (bLuaGlobalLibrary.time > _lastgc + 10.0f)
+                    {
+                        using (s_profileLuaGC.Auto())
+                        {
+                            bLuaNative.script.Call(_forcegc);
+                        }
+                        _lastgc = bLuaGlobalLibrary.time;
+                    }
+
+                    int refid;
+                    while (bLua.bLuaValue.deleteQueue.TryDequeue(out refid))
+                    {
+                        DestroyDynValue(refid);
+                    }
+                }
+                // End Garbage Collection
+
+                await Task.Delay(tickDelay);
+            }
         }
 
         struct ScheduledCoroutine
@@ -1406,22 +1428,31 @@ end");
 
         public void RunTestCoroutine()
         {
-            lua_pushcfunction(LuaPrint);
-            lua_setglobal(script._state, "TestPrint");
+            SetGlobal("blua", bLuaValue.CreateUserData(new bLuaGlobalLibrary()));
 
-            bLuaNative.script.ExecBuffer("co", @"
-print('testing coroutines! (this will not work properly in editor time)')
-function myco(a, b, c)
-    for i=1,5 do
-        print('co: ' .. i)
-
+            bLuaNative.script.ExecBuffer("co", @"function testYield(x)
+    for i=1,x do
+        blua.print('co: ' .. i)
         coroutine.yield()
     end
+end
+
+function testWait(x)
+    blua.print('waiting ' .. x .. ' seconds')
+    local startTime = blua.time
+    while blua.time < startTime + x do
+        coroutine.yield()
+    end
+    blua.print('done waiting')
 end");
 
-            using (bLua.bLuaValue fn = GetGlobal("myco"))
+            using (bLua.bLuaValue fn = GetGlobal("testYield"))
             {
-                CallCoroutine(fn, 1);
+                CallCoroutine(fn, 5);
+            }
+
+            using (bLua.bLuaValue fn = GetGlobal("testWait"))
+            {
                 CallCoroutine(fn, 2);
             }
         }
