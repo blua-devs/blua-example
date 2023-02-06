@@ -36,7 +36,7 @@ namespace bLua
         /// <summary> Basic Function (https://www.lua.org/manual/5.4/manual.html#6.1). </summary>
         BasicLibrary = 1,
         /// <summary> Lua Coroutine library and boilerplate Lua code for calling coroutines from C# (https://www.lua.org/manual/5.4/manual.html#6.2). </summary>
-        CoroutineManipulation = 2,
+        Coroutines = 2,
         /// <summary> Contains the `package` library for loading modules via paths (https://www.lua.org/manual/5.4/manual.html#6.3). </summary>
         Packages = 4,
         /// <summary> String Manipulation (https://www.lua.org/manual/5.4/manual.html#6.4) </summary>
@@ -58,11 +58,12 @@ namespace bLua
         /// programs do not crash) and therefore can compromise otherwise secure code." </remarks>
         /// <summary> The Debug Library (https://www.lua.org/manual/5.4/manual.html#6.10). </summary>
         Debug = 512,
-        /// <summary> By default includes a library of helpful functions that can be accessed via `blua.` in Lua code. </summary>
-        bLuaGlobalLibrary = 1024,
         /// <remarks> WARNING! Known play mode issues with bLua (C#-managed) garbage collection! Lua has built in GC handling for a vast majority of uses. </remarks>
         /// <summary> bLua (C#-managed) garbage collection. NOTE: Feature.BasicLibrary also needs to be enabled for this feature to work. </summary>
-        CSharpGarbageCollection = 2048,
+        CSharpGarbageCollection = 1024,
+        /// <summary> Includes a `wait(time)` function that can be used from inside coroutines to wait for a specified amount of time. NOTE: Feature.Coroutines and 
+        /// Feature.bLuaGlobalLibrary also need to be enabled for this feature to work. </summary>
+        Wait = 4096
     }
 
     /// <summary> Sandboxes are groupings of features that let you select premade feature lists for your bLua environment. </summary>
@@ -73,7 +74,7 @@ namespace bLua
         /// <remarks> WARNING! Some of these features include developer warnings, please review the remarks on individual features. </remarks>
         /// <summary> Includes all of the features Lua and bLua have to offer. </summary>
         AllFeatures = Feature.BasicLibrary
-            | Feature.CoroutineManipulation
+            | Feature.Coroutines
             | Feature.Packages
             | Feature.StringManipulation
             | Feature.UTF8Support
@@ -82,26 +83,26 @@ namespace bLua
             | Feature.IO
             | Feature.OS
             | Feature.Debug
-            | Feature.bLuaGlobalLibrary
-            | Feature.CSharpGarbageCollection,
+            | Feature.CSharpGarbageCollection
+            | Feature.Wait,
         /// <remarks> WARNING! Some of these features include developer warnings, please review the remarks on individual features. </remarks>
         /// <summary> Includes most Lua and bLua features, specifically ones that might be used commonly in modding. </summary>
         BasicModding = Feature.BasicLibrary
-            | Feature.CoroutineManipulation
+            | Feature.Coroutines
             | Feature.StringManipulation
             | Feature.UTF8Support
             | Feature.Tables
             | Feature.MathLibrary
             | Feature.IO
-            | Feature.bLuaGlobalLibrary,
+            | Feature.Wait,
         /// <summary> Includes basic Lua and bLua features, avoiding ones that could be potentially used maliciously. </summary>
         Safe = Feature.BasicLibrary
-            | Feature.CoroutineManipulation
+            | Feature.Coroutines
             | Feature.StringManipulation
             | Feature.UTF8Support
             | Feature.Tables
             | Feature.MathLibrary
-            | Feature.bLuaGlobalLibrary
+            | Feature.Wait
     }
 
     public static class bLuaNative
@@ -151,7 +152,109 @@ namespace bLua
             // Initialize all bLua User Data
             bLuaUserData.Init();
 
+            // Setup the bLua Global Library
+            SetGlobal("blua", bLuaValue.CreateUserData(new bLuaGlobalLibrary()));
+
             #region Feature Handling
+            if (Feature.BasicLibrary.Enabled())
+            {
+                LuaLibAPI.luaopen_base(_state);
+            }
+
+            if (Feature.Coroutines.Enabled())
+            {
+                LuaLibAPI.luaopen_coroutine(_state);
+                LuaLibAPI.lua_setglobal(_state, "coroutine");
+
+                TickHandler += TickCoroutines;
+
+                DoBuffer("builtin_coroutines", @"builtin_coroutines = {}");
+                _callco = DoBuffer("callco",
+                    @"return function(fn, a, b, c, d, e, f, g, h)
+                        local co = coroutine.create(fn)
+                        local res, error = coroutine.resume(co, a, b, c, d, e, f, g, h)
+                        blua.print('COROUTINE:: call co: %s -> %s -> %s', type(co), type(fn), coroutine.status(co))
+                        if not res then
+                            blua.print(string.format('error in co-routine: %s', error))
+                        end
+                        if coroutine.status(co) ~= 'dead' then
+                            builtin_coroutines[#builtin_coroutines+1] = co
+                        end
+                    end");
+                _updateco = DoBuffer("updateco",
+                    @"return function()
+                        local allRunning = true
+                        for _,co in ipairs(builtin_coroutines) do
+                            local res, error = coroutine.resume(co)
+                            if not res then
+                                blua.print(string.format('error in co-routine: %s', error))
+                            end
+                            if coroutine.status(co) == 'dead' then
+                                allRunning = false
+                            end
+                        end
+
+                        if not allRunning then
+                            local new_coroutines = {}
+                            for _,co in ipairs(builtin_coroutines) do
+                                if coroutine.status(co) ~= 'dead' then
+                                    new_coroutines[#new_coroutines+1] = co
+                                end
+                            end
+
+                            builtin_coroutines = new_coroutines
+                        end
+                    end");
+            }
+
+            if (Feature.Packages.Enabled())
+            {
+                LuaLibAPI.luaopen_package(_state);
+                LuaLibAPI.lua_setglobal(_state, "package");
+            }
+
+            if (Feature.StringManipulation.Enabled())
+            {
+                LuaLibAPI.luaopen_string(_state);
+                LuaLibAPI.lua_setglobal(_state, "string");
+            }
+
+            if (Feature.UTF8Support.Enabled())
+            {
+                LuaLibAPI.luaopen_utf8(_state);
+                LuaLibAPI.lua_setglobal(_state, "utf8");
+            }
+
+            if (Feature.Tables.Enabled())
+            {
+                LuaLibAPI.luaopen_table(_state);
+                LuaLibAPI.lua_setglobal(_state, "table");
+            }
+
+            if (Feature.MathLibrary.Enabled())
+            {
+                LuaLibAPI.luaopen_math(_state);
+                LuaLibAPI.lua_setglobal(_state, "math");
+            }
+
+            if (Feature.IO.Enabled())
+            {
+                LuaLibAPI.luaopen_io(_state);
+                LuaLibAPI.lua_setglobal(_state, "io");
+            }
+
+            if (Feature.OS.Enabled())
+            {
+                LuaLibAPI.luaopen_os(_state);
+                LuaLibAPI.lua_setglobal(_state, "os");
+            }
+
+            if (Feature.Debug.Enabled())
+            {
+                LuaLibAPI.luaopen_debug(_state);
+                LuaLibAPI.lua_setglobal(_state, "debug");
+            }
+
             if (Feature.CSharpGarbageCollection.Enabled())
             {
                 TickHandler += TickGarbageCollection;
@@ -159,97 +262,15 @@ namespace bLua
                 _forcegc = DoString(@"return function() collectgarbage() end");
             }
 
-            if (Feature.BasicLibrary.Enabled())
+            if (Feature.Wait.Enabled())
             {
-                LuaLibAPI.luaopen_base(_state);
-            }
-
-            if (Feature.CoroutineManipulation.Enabled())
-            {
-                LuaLibAPI.luaopen_coroutine(_state);
-
-                TickHandler += TickCoroutines;
-
-                DoBuffer("builtin_coroutines", @"builtin_coroutines = {}");
-                _callco = DoBuffer("callco", @"return function(fn, a, b, c, d, e, f, g, h)
-    local co = coroutine.create(fn)
-    local res, error = coroutine.resume(co, a, b, c, d, e, f, g, h)
-    blua.print('COROUTINE:: call co: %s -> %s -> %s', type(co), type(fn), coroutine.status(co))
-    if not res then
-        blua.print(string.format('error in co-routine: %s', error))
-    end
-    if coroutine.status(co) ~= 'dead' then
-        builtin_coroutines[#builtin_coroutines+1] = co
-    end
-end");
-                _updateco = DoBuffer("updateco", @"return function()
-    local allRunning = true
-    for _,co in ipairs(builtin_coroutines) do
-        local res, error = coroutine.resume(co)
-        if not res then
-            blua.print(string.format('error in co-routine: %s', error))
-        end
-        if coroutine.status(co) == 'dead' then
-            allRunning = false
-        end
-    end
-
-    if not allRunning then
-        local new_coroutines = {}
-        for _,co in ipairs(builtin_coroutines) do
-            if coroutine.status(co) ~= 'dead' then
-                new_coroutines[#new_coroutines+1] = co
-            end
-        end
-
-        builtin_coroutines = new_coroutines
-    end
-end");
-            }
-
-            if (Feature.Packages.Enabled())
-            {
-                LuaLibAPI.luaopen_package(_state);
-            }
-
-            if (Feature.StringManipulation.Enabled())
-            {
-                LuaLibAPI.luaopen_string(_state);
-            }
-
-            if (Feature.UTF8Support.Enabled())
-            {
-                LuaLibAPI.luaopen_utf8(_state);
-            }
-
-            if (Feature.Tables.Enabled())
-            {
-                LuaLibAPI.luaopen_table(_state);
-            }
-
-            if (Feature.MathLibrary.Enabled())
-            {
-                LuaLibAPI.luaopen_math(_state);
-            }
-
-            if (Feature.IO.Enabled())
-            {
-                LuaLibAPI.luaopen_io(_state);
-            }
-
-            if (Feature.OS.Enabled())
-            {
-                LuaLibAPI.luaopen_os(_state);
-            }
-
-            if (Feature.Debug.Enabled())
-            {
-                LuaLibAPI.luaopen_debug(_state);
-            }
-
-            if (Feature.bLuaGlobalLibrary.Enabled())
-            {
-                SetGlobal("blua", bLuaValue.CreateUserData(new bLuaGlobalLibrary()));
+                DoBuffer("wait",
+                    @"function wait(t)
+                        local startTime = blua.time
+                        while blua.time < startTime + t do
+                            coroutine.yield()
+                        end
+                    end");
             }
             #endregion // Feature Handling
 
@@ -321,7 +342,10 @@ end");
             // Only continue ticking while this value is set. This allows us to close the tick thread from outside of it when we need to
             while (_ticking)
             {
-                TickHandler();
+                if (TickHandler != null)
+                {
+                    TickHandler();
+                }
 
                 await Task.Delay(tickDelay);
             }
@@ -460,7 +484,10 @@ end");
 
         public static void Error(string message, string engineTrace = null)
         {
-            LuaErrorHandler(message, engineTrace);
+            if (LuaErrorHandler != null)
+            {
+                LuaErrorHandler(message, engineTrace);
+            }
 
             string msg = Lua.TraceMessage(message);
             if (engineTrace != null)

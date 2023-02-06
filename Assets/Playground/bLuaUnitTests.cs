@@ -196,32 +196,41 @@ end");
     {
         bLuaNative.Init();
 
-        bLuaNative.SetGlobal("blua", bLuaValue.CreateUserData(new bLuaGlobalLibrary()));
-
-        bLuaNative.ExecBuffer("co", @"function testYield(x)
+        if (Feature.Coroutines.Enabled())
+        {
+            bLuaNative.ExecBuffer("co", @"
+function testYield(x)
     for i=1,x do
         blua.print('co: ' .. i)
         coroutine.yield()
     end
-end
+end");
+            using (bLuaValue fn = bLuaNative.GetGlobal("testYield"))
+            {
+                bLuaNative.CallCoroutine(fn, 5);
+            }
 
+            if (Feature.Wait.Enabled())
+            {
+                bLuaNative.ExecBuffer("wait", @"
 function testWait(x)
     blua.print('waiting ' .. x .. ' seconds')
-    local startTime = blua.time
-    while blua.time < startTime + x do
-        coroutine.yield()
-    end
+    wait(x)
     blua.print('done waiting')
 end");
-
-        using (bLuaValue fn = bLuaNative.GetGlobal("testYield"))
-        {
-            bLuaNative.CallCoroutine(fn, 5);
+                using (bLuaValue fn = bLuaNative.GetGlobal("testWait"))
+                {
+                    bLuaNative.CallCoroutine(fn, 2);
+                }
+            }
+            else
+            {
+                Debug.Log("Did not test the wait function because the " + Feature.Wait.ToString() + " feature was not enabled.");
+            }
         }
-
-        using (bLuaValue fn = bLuaNative.GetGlobal("testWait"))
+        else
         {
-            bLuaNative.CallCoroutine(fn, 2);
+            Debug.Log("Did not test coroutines because the " + Feature.Coroutines.ToString() + " feature was not enabled.");
         }
     }
 
