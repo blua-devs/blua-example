@@ -192,7 +192,11 @@ namespace bLua
                 LuaLibAPI.luaopen_coroutine(_state);
                 LuaLibAPI.lua_setglobal(_state, "coroutine");
 
-                OnTick.AddListener(TickCoroutines);
+                if (OnTick != null)
+                {
+                    OnTick.RemoveListener(TickCoroutines);
+                    OnTick.AddListener(TickCoroutines);
+                }
 
                 DoBuffer("builtin_coroutines", @"builtin_coroutines = {}");
                 _callco = DoBuffer("callco",
@@ -293,7 +297,11 @@ namespace bLua
 
             if (Feature.CSharpGarbageCollection.Enabled())
             {
-                OnTick.AddListener(TickGarbageCollection);
+                if (OnTick != null)
+                {
+                    OnTick.RemoveListener(TickGarbageCollection);
+                    OnTick.AddListener(TickGarbageCollection);
+                }
 
                 _forcegc = DoString(@"return function() collectgarbage() end");
             }
@@ -341,7 +349,13 @@ namespace bLua
 
         public static void DeInit()
         {
-            Call(_cancelcos);
+            if (_cancelcos != null) // Don't attempt to cancel coroutines if this function is null (likely because coroutines aren't enabled)
+            {
+                Call(_cancelcos);
+            }
+
+            OnTick.RemoveListener(TickCoroutines);
+            OnTick.RemoveListener(TickGarbageCollection);
 
             StopTicking();
 
@@ -421,11 +435,6 @@ namespace bLua
 
             _ticking = false;
             _requestStopTicking = false;
-
-            if (OnTick != null)
-            {
-                OnTick.RemoveAllListeners();
-            }
 
             // If we've already re-requested to start ticking again, go ahead and handle that here as the previous Tick() call would have failed
             if (_requestStartTicking)
