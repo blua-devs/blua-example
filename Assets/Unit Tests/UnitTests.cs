@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using UnityEngine.Assertions;
 using UnityEngine;
 using bLua;
@@ -8,16 +9,29 @@ using UnityEditor;
 #endif
 
 #if UNITY_EDITOR
-[CustomEditor(typeof(bLuaUnitTests))]
-public class bLuaUnitTestsEditor : Editor
+[CustomEditor(typeof(UnitTests))]
+public class UnitTestsEditor : Editor
 {
     public override void OnInspectorGUI()
     {
         DrawDefaultInspector();
 
+        GUILayout.Space(10);
+
+        if (GUILayout.Button("Run All"))
+        {
+            UnitTests unitTests = (UnitTests)target;
+            if (unitTests)
+            {
+                unitTests.RunAllTests();
+            }
+        }
+
+        GUILayout.Space(10);
+
         if (GUILayout.Button("Run Unit Tests"))
         {
-            bLuaUnitTests unitTests = (bLuaUnitTests)target;
+            UnitTests unitTests = (UnitTests)target;
             if (unitTests)
             {
                 unitTests.RunUnitTests();
@@ -25,7 +39,7 @@ public class bLuaUnitTestsEditor : Editor
         }
         if (GUILayout.Button("Run Test Coroutine"))
         {
-            bLuaUnitTests unitTests = (bLuaUnitTests)target;
+            UnitTests unitTests = (UnitTests)target;
             if (unitTests)
             {
                 unitTests.RunTestCoroutine();
@@ -33,7 +47,7 @@ public class bLuaUnitTestsEditor : Editor
         }
         if (GUILayout.Button("Run Threading Macros"))
         {
-            bLuaUnitTests unitTests = (bLuaUnitTests)target;
+            UnitTests unitTests = (UnitTests)target;
             if (unitTests)
             {
                 unitTests.RunThreadingMacros();
@@ -43,9 +57,36 @@ public class bLuaUnitTestsEditor : Editor
 }
 #endif // UNITY_EDITOR
 
-public class bLuaUnitTests : MonoBehaviour
+public class UnitTests : MonoBehaviour
 {
 
+
+    private void Start()
+    {
+        RunAllTests();
+    }
+
+    private void OnGUI()
+    {
+        GUI.Box(new Rect(10, 10, 300, 60), "Unit Test Play Helper");
+        GUI.Label(new Rect(20, 30, 260, 40), "Open the Window > General > Console to view results!");
+    }
+
+    async public void RunAllTests()
+    {
+        Debug.Log("Starting Unit Tests");
+        RunUnitTests();
+
+        await Task.Delay(1000);
+
+        Debug.Log("Starting Coroutine Test");
+        RunTestCoroutine();
+
+        await Task.Delay(1000);
+
+        Debug.Log("Starting Thread Macros Test");
+        RunThreadingMacros();
+    }
 
     public void RunUnitTests()
     {
@@ -195,7 +236,7 @@ end");
             Assert.AreEqual(fn.Call(userdata, 7.0).Number, 7.0);
         }
 
-        Debug.Log("Lua: Ran unit tests");
+        Debug.Log("Finished Unit Tests");
 
         Assert.AreEqual(bLua.NativeLua.LuaLibAPI.lua_gettop(bLuaNative._state), stackSize);
     }
@@ -212,6 +253,8 @@ end");
                         blua.print('co: ' .. i)
                         coroutine.yield()
                     end
+
+                    blua.print('Finished Coroutine Test')
                 end");
             using (bLuaValue fn = bLuaNative.GetGlobal("testYield"))
             {
@@ -242,6 +285,7 @@ end");
                         end)
                         wait(x)
                         blua.print('I print last')
+                        blua.print('Finished Thread Macros Test')
                     end
 
                     function printStringAfter(s, t)
