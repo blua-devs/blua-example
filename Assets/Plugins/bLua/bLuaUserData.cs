@@ -171,15 +171,15 @@ namespace bLua
 
         static int CallFunction(System.IntPtr state)
         {
-            var stateBack = bLuaNative._state;
-            bLuaNative._state = state;
+            var stateBack = bLua._state;
+            bLua._state = state;
 
             try
             {
                 int stackSize = LuaLibAPI.lua_gettop(state);
                 if (stackSize == 0 || LuaLibAPI.lua_type(state, 1) != (int)DataType.UserData)
                 {
-                    bLuaNative.Error($"Object not provided when calling function.");
+                    bLua.Error($"Object not provided when calling function.");
                     return 0;
                 }
 
@@ -187,7 +187,7 @@ namespace bLua
 
                 if (n < 0 || n >= s_methods.Count)
                 {
-                    bLuaNative.Error($"Illegal method index: {n}");
+                    bLua.Error($"Illegal method index: {n}");
                     return 0;
                 }
 
@@ -245,14 +245,14 @@ namespace bLua
 
                 if (LuaLibAPI.lua_gettop(state) < 1)
                 {
-                    bLuaNative.Error($"Stack is empty");
+                    bLua.Error($"Stack is empty");
                     return 0;
                 }
 
                 int t = LuaLibAPI.lua_type(state, 1);
                 if (t != (int)DataType.UserData)
                 {
-                    bLuaNative.Error($"Object is not a user data: {((DataType)t).ToString()}");
+                    bLua.Error($"Object is not a user data: {((DataType)t).ToString()}");
                     return 0;
                 }
 
@@ -260,7 +260,7 @@ namespace bLua
                 int res = LuaLibAPI.lua_getiuservalue(state, 1, 1);
                 if (res != (int)DataType.Number)
                 {
-                    bLuaNative.Error($"Object not provided when calling function.");
+                    bLua.Error($"Object not provided when calling function.");
                     return 0;
                 }
                 int liveObjectIndex = LuaLibAPI.lua_tointegerx(state, -1, System.IntPtr.Zero);
@@ -279,18 +279,18 @@ namespace bLua
                 {
                     ex = e;
                 }
-                bLuaNative.Error($"Error calling function: {ex.Message}", $"{ex.StackTrace}");
+                bLua.Error($"Error calling function: {ex.Message}", $"{ex.StackTrace}");
                 return 0;
             } finally
             {
-                bLuaNative._state = stateBack;
+                bLua._state = stateBack;
             }
         }
 
         static int CallStaticFunction(System.IntPtr state)
         {
-            var stateBack = bLuaNative._state;
-            bLuaNative._state = state;
+            var stateBack = bLua._state;
+            bLua._state = state;
 
             try
             {
@@ -359,11 +359,11 @@ namespace bLua
                 {
                     ex = ex.InnerException;
                 }
-                bLuaNative.Error($"Error calling function: {ex.Message}", $"{ex.StackTrace}");
+                bLua.Error($"Error calling function: {ex.Message}", $"{ex.StackTrace}");
                 return 0;
             } finally
             {
-                bLuaNative._state = stateBack;
+                bLua._state = stateBack;
             }
         }
 
@@ -417,16 +417,16 @@ namespace bLua
 
         static int IndexFunction(System.IntPtr state)
         {
-            var stateBack = bLuaNative._state;
+            var stateBack = bLua._state;
             try
             {
-                bLuaNative._state = state;
+                bLua._state = state;
 
                 int n = LuaLibAPI.lua_tointegerx(state, Lua.UpValueIndex(1), System.IntPtr.Zero);
 
                 if (n < 0 || n >= s_entries.Count)
                 {
-                    bLuaNative.Error($"Invalid type index in lua: {n}");
+                    bLua.Error($"Invalid type index in lua: {n}");
                     return 0;
                 }
 
@@ -482,27 +482,27 @@ namespace bLua
                 {
                     ex = e;
                 }
-                bLuaNative.Error("Error indexing userdata", $"Error in index: {ex.Message} {ex.StackTrace}");
+                bLua.Error("Error indexing userdata", $"Error in index: {ex.Message} {ex.StackTrace}");
                 Lua.PushNil();
                 return 1;
             } finally
             {
-                bLuaNative._state = stateBack;
+                bLua._state = stateBack;
             }
         }
 
         static public object GetUserDataObject(int nstack)
         {
-            LuaLibAPI.lua_checkstack(bLuaNative._state, 1);
-            int ntype = LuaLibAPI.lua_getiuservalue(bLuaNative._state, nstack, 1);
+            LuaLibAPI.lua_checkstack(bLua._state, 1);
+            int ntype = LuaLibAPI.lua_getiuservalue(bLua._state, nstack, 1);
             if (ntype != (int)DataType.Number)
             {
-                bLuaNative.Error($"Could not find valid user data object");
+                bLua.Error($"Could not find valid user data object");
                 Lua.PopStack();
                 return null;
             }
 
-            int liveObjectIndex = LuaLibAPI.lua_tointegerx(bLuaNative._state, -1, System.IntPtr.Zero);
+            int liveObjectIndex = LuaLibAPI.lua_tointegerx(bLua._state, -1, System.IntPtr.Zero);
 
             object obj = s_liveObjects[liveObjectIndex];
 
@@ -513,8 +513,8 @@ namespace bLua
 
         static int SetIndexFunction(System.IntPtr state)
         {
-            var stateBack = bLuaNative._state;
-            bLuaNative._state = state;
+            var stateBack = bLua._state;
+            bLua._state = state;
 
             try
             {
@@ -522,7 +522,7 @@ namespace bLua
 
                 if (n < 0 || n >= s_entries.Count)
                 {
-                    bLuaNative.Error($"Invalid type index in lua: {n}");
+                    bLua.Error($"Invalid type index in lua: {n}");
                     return 0;
                 }
 
@@ -567,11 +567,11 @@ namespace bLua
 
                 }
 
-                bLuaNative.Error($"Could not set property {str}");
+                bLua.Error($"Could not set property {str}");
                 return 0;
             } finally
             {
-                bLuaNative._state = stateBack;
+                bLua._state = stateBack;
             }
         }
 
@@ -579,7 +579,7 @@ namespace bLua
         {
             LuaLibAPI.lua_checkstack(state, 1);
             LuaLibAPI.lua_getiuservalue(state, 1, 1);
-            int n = LuaLibAPI.lua_tointegerx(bLuaNative._state, -1, System.IntPtr.Zero);
+            int n = LuaLibAPI.lua_tointegerx(bLua._state, -1, System.IntPtr.Zero);
             s_liveObjects[n] = null;
             s_liveObjectsFreeList.Add(n);
             return 0;
@@ -662,7 +662,7 @@ namespace bLua
             int typeIndex;
             if (s_typenameToEntryIndex.TryGetValue(obj.GetType().Name, out typeIndex) == false)
             {
-                bLuaNative.Error($"Type {obj.GetType().Name} is not marked as a user data. Add [bLuaUserData] to its definition.");
+                bLua.Error($"Type {obj.GetType().Name} is not marked as a user data. Add [bLuaUserData] to its definition.");
                 Lua.PushNil();
                 return;
             }
@@ -693,11 +693,11 @@ namespace bLua
                 s_nNextLiveObject++;
             }
 
-            LuaLibAPI.lua_newuserdatauv(bLuaNative._state, new System.IntPtr(8), 1);
+            LuaLibAPI.lua_newuserdatauv(bLua._state, new System.IntPtr(8), 1);
             Lua.PushObjectOntoStack(objIndex);
-            LuaLibAPI.lua_setiuservalue(bLuaNative._state, -2, 1);
+            LuaLibAPI.lua_setiuservalue(bLua._state, -2, 1);
             Lua.PushStack(entry.metatable);
-            LuaLibAPI.lua_setmetatable(bLuaNative._state, -2);
+            LuaLibAPI.lua_setmetatable(bLua._state, -2);
 
             string msg = Lua.TraceMessage("live object");
 

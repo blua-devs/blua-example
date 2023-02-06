@@ -60,16 +60,16 @@ namespace bLua.NativeLua
 
         public static void DestroyDynValue(int refid)
         {
-            if (bLuaNative._state != System.IntPtr.Zero)
+            if (bLua._state != System.IntPtr.Zero)
             {
                 //remove the value from the registry.
-                LuaXLibAPI.luaL_unref(bLuaNative._state, LUA_REGISTRYINDEX, refid);
+                LuaXLibAPI.luaL_unref(bLua._state, LUA_REGISTRYINDEX, refid);
             }
         }
 
         public static DataType InspectTypeOnTopOfStack()
         {
-            return (DataType)LuaLibAPI.lua_type(bLuaNative._state, -1);
+            return (DataType)LuaLibAPI.lua_type(bLua._state, -1);
         }
 
         public static string TraceMessage(string message = null, int level = 1)
@@ -78,9 +78,9 @@ namespace bLua.NativeLua
             {
                 message = "stack";
             }
-            LuaLibAPI.lua_checkstack(bLuaNative._state, 1);
+            LuaLibAPI.lua_checkstack(bLua._state, 1);
 
-            LuaXLibAPI.luaL_traceback(bLuaNative._state, bLuaNative._state, message, level);
+            LuaXLibAPI.luaL_traceback(bLua._state, bLua._state, message, level);
             return PopString();
         }
         #endregion // Miscellaneous
@@ -88,30 +88,30 @@ namespace bLua.NativeLua
         #region Push (Stack)
         public static void PushObjectOntoStack(bool b)
         {
-            LuaLibAPI.lua_checkstack(bLuaNative._state, 1);
+            LuaLibAPI.lua_checkstack(bLua._state, 1);
 
-            LuaLibAPI.lua_pushboolean(bLuaNative._state, b ? 1 : 0);
+            LuaLibAPI.lua_pushboolean(bLua._state, b ? 1 : 0);
         }
 
         public static void PushObjectOntoStack(double d)
         {
-            LuaLibAPI.lua_checkstack(bLuaNative._state, 1);
+            LuaLibAPI.lua_checkstack(bLua._state, 1);
 
-            LuaLibAPI.lua_pushnumber(bLuaNative._state, d);
+            LuaLibAPI.lua_pushnumber(bLua._state, d);
         }
 
         public static void PushObjectOntoStack(float d)
         {
-            LuaLibAPI.lua_checkstack(bLuaNative._state, 1);
+            LuaLibAPI.lua_checkstack(bLua._state, 1);
 
-            LuaLibAPI.lua_pushnumber(bLuaNative._state, (double)d);
+            LuaLibAPI.lua_pushnumber(bLua._state, (double)d);
         }
 
         public static void PushObjectOntoStack(int d)
         {
-            LuaLibAPI.lua_checkstack(bLuaNative._state, 1);
+            LuaLibAPI.lua_checkstack(bLua._state, 1);
 
-            LuaLibAPI.lua_pushinteger(bLuaNative._state, d);
+            LuaLibAPI.lua_pushinteger(bLua._state, d);
         }
 
         public static void PushString(System.IntPtr state, string s)
@@ -129,26 +129,26 @@ namespace bLua.NativeLua
 
         public static void PushObjectOntoStack(string d)
         {
-            LuaLibAPI.lua_checkstack(bLuaNative._state, 1);
+            LuaLibAPI.lua_checkstack(bLua._state, 1);
 
             if (d == null)
             {
                 PushNil();
                 return;
             }
-            PushString(bLuaNative._state, d);
+            PushString(bLua._state, d);
         }
 
         public static void PushNil()
         {
-            LuaLibAPI.lua_checkstack(bLuaNative._state, 1);
+            LuaLibAPI.lua_checkstack(bLua._state, 1);
 
-            LuaLibAPI.lua_pushnil(bLuaNative._state);
+            LuaLibAPI.lua_pushnil(bLua._state);
         }
 
         public static void LuaPushCFunction(LuaCFunction fn)
         {
-            LuaLibAPI.lua_pushcclosure(bLuaNative._state, Marshal.GetFunctionPointerForDelegate(fn), 0);
+            LuaLibAPI.lua_pushcclosure(bLua._state, Marshal.GetFunctionPointerForDelegate(fn), 0);
         }
 
         public static void PushClosure(LuaCFunction fn, bLuaValue[] upvalues)
@@ -158,14 +158,14 @@ namespace bLua.NativeLua
                 PushStack(upvalues[i]);
             }
 
-            LuaLibAPI.lua_pushcclosure(bLuaNative._state, Marshal.GetFunctionPointerForDelegate(fn), upvalues.Length);
+            LuaLibAPI.lua_pushcclosure(bLua._state, Marshal.GetFunctionPointerForDelegate(fn), upvalues.Length);
         }
 
         public static void PushNewTable(int reserveArray = 0, int reserveTable = 0)
         {
-            LuaLibAPI.lua_checkstack(bLuaNative._state, 1);
+            LuaLibAPI.lua_checkstack(bLua._state, 1);
 
-            LuaLibAPI.lua_createtable(bLuaNative._state, reserveArray, reserveTable);
+            LuaLibAPI.lua_createtable(bLua._state, reserveArray, reserveTable);
         }
 
         public static void PushObjectOntoStack(object obj)
@@ -177,31 +177,31 @@ namespace bLua.NativeLua
                 return;
             }
 
-            LuaLibAPI.lua_checkstack(bLuaNative._state, 1);
+            LuaLibAPI.lua_checkstack(bLua._state, 1);
 
             if (obj == null)
             {
-                LuaLibAPI.lua_pushnil(bLuaNative._state);
+                LuaLibAPI.lua_pushnil(bLua._state);
             }
             else if (obj is int)
             {
-                LuaLibAPI.lua_pushinteger(bLuaNative._state, (int)obj);
+                LuaLibAPI.lua_pushinteger(bLua._state, (int)obj);
             }
             else if (obj is double)
             {
-                LuaLibAPI.lua_pushnumber(bLuaNative._state, (double)obj);
+                LuaLibAPI.lua_pushnumber(bLua._state, (double)obj);
             }
             else if (obj is float)
             {
-                LuaLibAPI.lua_pushnumber(bLuaNative._state, (double)(float)obj);
+                LuaLibAPI.lua_pushnumber(bLua._state, (double)(float)obj);
             }
             else if (obj is bool)
             {
-                LuaLibAPI.lua_pushboolean(bLuaNative._state, ((bool)obj) ? 1 : 0);
+                LuaLibAPI.lua_pushboolean(bLua._state, ((bool)obj) ? 1 : 0);
             }
             else if (obj is string)
             {
-                PushString(bLuaNative._state, (string)obj);
+                PushString(bLua._state, (string)obj);
             }
             else if (obj is LuaCFunction)
             {
@@ -209,14 +209,14 @@ namespace bLua.NativeLua
             }
             else
             {
-                LuaLibAPI.lua_pushnil(bLuaNative._state);
-                bLuaNative.Error($"Unrecognized object pushing onto stack: {obj.GetType().ToString()}");
+                LuaLibAPI.lua_pushnil(bLua._state);
+                bLua.Error($"Unrecognized object pushing onto stack: {obj.GetType().ToString()}");
             }
         }
 
         public static int PushStack(bLuaValue val)
         {
-            LuaLibAPI.lua_checkstack(bLuaNative._state, 1);
+            LuaLibAPI.lua_checkstack(bLua._state, 1);
 
             if (val == null)
             {
@@ -224,7 +224,7 @@ namespace bLua.NativeLua
                 return (int)DataType.Nil;
             }
 
-            return LuaLibAPI.lua_rawgeti(bLuaNative._state, LUA_REGISTRYINDEX, val.refid);
+            return LuaLibAPI.lua_rawgeti(bLua._state, LUA_REGISTRYINDEX, val.refid);
         }
         #endregion // Push (Stack)
 
@@ -236,28 +236,28 @@ namespace bLua.NativeLua
 
         public static bLuaValue PopStackIntoValue()
         {
-            int t = LuaLibAPI.lua_type(bLuaNative._state, -1);
+            int t = LuaLibAPI.lua_type(bLua._state, -1);
             switch (t)
             {
                 case (int)DataType.Nil:
-                    LuaPop(bLuaNative._state, 1);
+                    LuaPop(bLua._state, 1);
                     return bLuaValue.Nil;
 
                 case (int)DataType.Boolean:
-                    int val = LuaLibAPI.lua_toboolean(bLuaNative._state, -1);
-                    LuaPop(bLuaNative._state, 1);
+                    int val = LuaLibAPI.lua_toboolean(bLua._state, -1);
+                    LuaPop(bLua._state, 1);
                     return val != 0 ? bLuaValue.True : bLuaValue.False;
 
                 default:
                     //pops the value on top of the stack and makes a reference to it.
-                    int refid = LuaXLibAPI.luaL_ref(bLuaNative._state, LUA_REGISTRYINDEX);
+                    int refid = LuaXLibAPI.luaL_ref(bLua._state, LUA_REGISTRYINDEX);
                     return new bLuaValue(refid);
             }
         }
 
         public static object PopStackIntoObject()
         {
-            DataType t = (DataType)LuaLibAPI.lua_type(bLuaNative._state, -1);
+            DataType t = (DataType)LuaLibAPI.lua_type(bLua._state, -1);
             switch (t)
             {
                 case DataType.Nil:
@@ -276,61 +276,61 @@ namespace bLua.NativeLua
 
         public static double PopNumber()
         {
-            double result = LuaLibAPI.lua_tonumberx(bLuaNative._state, -1, System.IntPtr.Zero);
-            LuaPop(bLuaNative._state, 1);
+            double result = LuaLibAPI.lua_tonumberx(bLua._state, -1, System.IntPtr.Zero);
+            LuaPop(bLua._state, 1);
             return result;
         }
 
         public static int PopInteger()
         {
-            int result = LuaLibAPI.lua_tointegerx(bLuaNative._state, -1, System.IntPtr.Zero);
-            LuaPop(bLuaNative._state, 1);
+            int result = LuaLibAPI.lua_tointegerx(bLua._state, -1, System.IntPtr.Zero);
+            LuaPop(bLua._state, 1);
             return result;
         }
 
         public static bool PopBool()
         {
-            int result = LuaLibAPI.lua_toboolean(bLuaNative._state, -1);
-            LuaPop(bLuaNative._state, 1);
+            int result = LuaLibAPI.lua_toboolean(bLua._state, -1);
+            LuaPop(bLua._state, 1);
             return result != 0;
         }
 
         public static string PopString()
         {
-            string result = GetString(bLuaNative._state, -1);
-            LuaPop(bLuaNative._state, 1);
+            string result = GetString(bLua._state, -1);
+            LuaPop(bLua._state, 1);
             return result;
         }
 
         public static List<bLuaValue> PopList()
         {
-            int len = (int)LuaLibAPI.lua_rawlen(bLuaNative._state, -1);
+            int len = (int)LuaLibAPI.lua_rawlen(bLua._state, -1);
             List<bLuaValue> result = new List<bLuaValue>(len);
 
-            LuaLibAPI.lua_checkstack(bLuaNative._state, 2);
+            LuaLibAPI.lua_checkstack(bLua._state, 2);
 
             for (int i = 1; i <= len; ++i)
             {
-                LuaLibAPI.lua_geti(bLuaNative._state, -1, i);
+                LuaLibAPI.lua_geti(bLua._state, -1, i);
                 result.Add(PopStackIntoValue());
             }
 
             //we're actually popping the list off.
-            LuaPop(bLuaNative._state, 1);
+            LuaPop(bLua._state, 1);
 
             return result;
         }
 
         public static List<string> PopListOfStrings()
         {
-            LuaLibAPI.lua_checkstack(bLuaNative._state, 2);
+            LuaLibAPI.lua_checkstack(bLua._state, 2);
 
-            int len = (int)LuaLibAPI.lua_rawlen(bLuaNative._state, -1);
+            int len = (int)LuaLibAPI.lua_rawlen(bLua._state, -1);
             List<string> result = new List<string>(len);
 
             for (int i = 1; i <= len; ++i)
             {
-                int t = LuaLibAPI.lua_geti(bLuaNative._state, -1, i);
+                int t = LuaLibAPI.lua_geti(bLua._state, -1, i);
                 if (t == (int)DataType.String)
                 {
                     result.Add(PopString());
@@ -342,7 +342,7 @@ namespace bLua.NativeLua
             }
 
             //we're actually popping the list off.
-            LuaPop(bLuaNative._state, 1);
+            LuaPop(bLua._state, 1);
 
             return result;
         }
@@ -350,21 +350,21 @@ namespace bLua.NativeLua
         public static Dictionary<string, bLuaValue> PopDict()
         {
             Dictionary<string, bLuaValue> result = new Dictionary<string, bLuaValue>();
-            LuaLibAPI.lua_pushnil(bLuaNative._state);
-            while (LuaLibAPI.lua_next(bLuaNative._state, -2) != 0)
+            LuaLibAPI.lua_pushnil(bLua._state);
+            while (LuaLibAPI.lua_next(bLua._state, -2) != 0)
             {
-                if (LuaLibAPI.lua_type(bLuaNative._state, -2) != (int)DataType.String)
+                if (LuaLibAPI.lua_type(bLua._state, -2) != (int)DataType.String)
                 {
-                    LuaPop(bLuaNative._state, 1);
+                    LuaPop(bLua._state, 1);
                     continue;
                 }
 
-                string key = GetString(bLuaNative._state, -2);
+                string key = GetString(bLua._state, -2);
                 result.Add(key, PopStackIntoValue());
             }
 
             //pop the table off the stack.
-            LuaPop(bLuaNative._state, 1);
+            LuaPop(bLua._state, 1);
 
             return result;
         }
@@ -372,8 +372,8 @@ namespace bLua.NativeLua
         public static List<bLuaValue.Pair> PopFullDict()
         {
             List<bLuaValue.Pair> result = new List<bLuaValue.Pair>();
-            LuaLibAPI.lua_pushnil(bLuaNative._state);
-            while (LuaLibAPI.lua_next(bLuaNative._state, -2) != 0)
+            LuaLibAPI.lua_pushnil(bLua._state);
+            while (LuaLibAPI.lua_next(bLua._state, -2) != 0)
             {
                 var val = PopStackIntoValue();
                 var key = PopStackIntoValue();
@@ -387,76 +387,76 @@ namespace bLua.NativeLua
             }
 
             //pop the table off the stack.
-            LuaPop(bLuaNative._state, 1);
+            LuaPop(bLua._state, 1);
 
             return result;
         }
 
         public static bool PopTableHasNonInts()
         {
-            LuaLibAPI.lua_pushnil(bLuaNative._state);
-            while (LuaLibAPI.lua_next(bLuaNative._state, -2) != 0)
+            LuaLibAPI.lua_pushnil(bLua._state);
+            while (LuaLibAPI.lua_next(bLua._state, -2) != 0)
             {
                 var val = PopStackIntoValue();
 
-                if (LuaLibAPI.lua_type(bLuaNative._state, -1) != (int)DataType.String)
+                if (LuaLibAPI.lua_type(bLua._state, -1) != (int)DataType.String)
                 {
                     //pop key, value, and table.
-                    LuaPop(bLuaNative._state, 3);
+                    LuaPop(bLua._state, 3);
                     return true;
                 }
 
                 //just pop value, key goes with next.
-                LuaPop(bLuaNative._state, 1);
+                LuaPop(bLua._state, 1);
             }
 
             //pop the table off the stack.
-            LuaPop(bLuaNative._state, 1);
+            LuaPop(bLua._state, 1);
 
             return false;
         }
 
         public static bool PopTableEmpty()
         {
-            LuaLibAPI.lua_pushnil(bLuaNative._state);
+            LuaLibAPI.lua_pushnil(bLua._state);
 
-            bool result = (LuaLibAPI.lua_next(bLuaNative._state, -2) == 0);
-            LuaPop(bLuaNative._state, result ? 1 : 3); //if empty pop just the table, otherwise the table and the key/value pair.
+            bool result = (LuaLibAPI.lua_next(bLua._state, -2) == 0);
+            LuaPop(bLua._state, result ? 1 : 3); //if empty pop just the table, otherwise the table and the key/value pair.
 
             return result;
         }
 
         public static void PopStack()
         {
-            LuaPop(bLuaNative._state, 1);
+            LuaPop(bLua._state, 1);
         }
         #endregion // Pop (Stack)
 
         #region New Values
         public static bLuaValue NewMetaTable(string tname)
         {
-            LuaXLibAPI.luaL_newmetatable(bLuaNative._state, tname);
+            LuaXLibAPI.luaL_newmetatable(bLua._state, tname);
             return PopStackIntoValue();
         }
 
         public static bLuaValue NewBoolean(bool val)
         {
-            LuaLibAPI.lua_checkstack(bLuaNative._state, 1);
-            LuaLibAPI.lua_pushboolean(bLuaNative._state, val ? 1 : 0);
+            LuaLibAPI.lua_checkstack(bLua._state, 1);
+            LuaLibAPI.lua_pushboolean(bLua._state, val ? 1 : 0);
             return PopStackIntoValue();
         }
 
         public static bLuaValue NewNumber(double val)
         {
-            LuaLibAPI.lua_checkstack(bLuaNative._state, 1);
-            LuaLibAPI.lua_pushnumber(bLuaNative._state, val);
+            LuaLibAPI.lua_checkstack(bLua._state, 1);
+            LuaLibAPI.lua_pushnumber(bLua._state, val);
             return PopStackIntoValue();
         }
 
         public static bLuaValue NewString(string val)
         {
-            LuaLibAPI.lua_checkstack(bLuaNative._state, 1);
-            PushString(bLuaNative._state, val);
+            LuaLibAPI.lua_checkstack(bLua._state, 1);
+            PushString(bLua._state, val);
             return PopStackIntoValue();
         }
         #endregion // New Values
@@ -466,7 +466,7 @@ namespace bLua.NativeLua
         {
             PushStack(tbl);
             PushObjectOntoStack(key);
-            DataType t = (DataType)LuaLibAPI.lua_gettable(bLuaNative._state, -2);
+            DataType t = (DataType)LuaLibAPI.lua_gettable(bLua._state, -2);
             var result = PopStackIntoValue(); //pop the result value out.
             result.dataType = t;
             PopStack(); //pop the table out and discard it.
@@ -477,7 +477,7 @@ namespace bLua.NativeLua
         {
             PushStack(tbl);
             PushObjectOntoStack(key);
-            DataType t = (DataType)LuaLibAPI.lua_gettable(bLuaNative._state, -2);
+            DataType t = (DataType)LuaLibAPI.lua_gettable(bLua._state, -2);
             var result = PopStackIntoValue(); //pop the result value out.
             result.dataType = t;
             PopStack(); //pop the table out and discard it.
@@ -488,7 +488,7 @@ namespace bLua.NativeLua
         {
             PushStack(tbl);
             PushObjectOntoStack(key);
-            DataType t = (DataType)LuaLibAPI.lua_rawget(bLuaNative._state, -2);
+            DataType t = (DataType)LuaLibAPI.lua_rawget(bLua._state, -2);
             var result = PopStackIntoValue(); //pop the result value out.
             result.dataType = t;
             PopStack(); //pop the table out and discard it.
@@ -499,7 +499,7 @@ namespace bLua.NativeLua
         {
             PushStack(tbl);
             PushObjectOntoStack(key);
-            DataType t = (DataType)LuaLibAPI.lua_rawget(bLuaNative._state, -2);
+            DataType t = (DataType)LuaLibAPI.lua_rawget(bLua._state, -2);
             var result = PopStackIntoValue(); //pop the result value out.
             result.dataType = t;
             PopStack(); //pop the table out and discard it.
@@ -511,7 +511,7 @@ namespace bLua.NativeLua
             PushStack(tbl);
             PushStack(key);
             PushStack(val);
-            LuaLibAPI.lua_settable(bLuaNative._state, -3);
+            LuaLibAPI.lua_settable(bLua._state, -3);
             PopStack();
         }
 
@@ -520,7 +520,7 @@ namespace bLua.NativeLua
             PushStack(tbl);
             PushObjectOntoStack(key);
             PushStack(val);
-            LuaLibAPI.lua_settable(bLuaNative._state, -3);
+            LuaLibAPI.lua_settable(bLua._state, -3);
             PopStack();
         }
 
@@ -529,7 +529,7 @@ namespace bLua.NativeLua
             PushStack(tbl);
             PushObjectOntoStack(key);
             PushObjectOntoStack(val);
-            LuaLibAPI.lua_settable(bLuaNative._state, -3);
+            LuaLibAPI.lua_settable(bLua._state, -3);
             PopStack();
         }
 
@@ -538,7 +538,7 @@ namespace bLua.NativeLua
             PushStack(tbl);
             PushObjectOntoStack(key);
             PushObjectOntoStack(val);
-            LuaLibAPI.lua_settable(bLuaNative._state, -3);
+            LuaLibAPI.lua_settable(bLua._state, -3);
             PopStack();
         }
         #endregion // Tables
@@ -547,7 +547,7 @@ namespace bLua.NativeLua
         public static int Length(bLuaValue val)
         {
             PushStack(val);
-            uint result = LuaLibAPI.lua_rawlen(bLuaNative._state, -1);
+            uint result = LuaLibAPI.lua_rawlen(bLua._state, -1);
             PopStack();
 
             return (int)result;
@@ -556,9 +556,9 @@ namespace bLua.NativeLua
         //index -- remember, 1-based!
         public static bLuaValue Index(bLuaValue val, int index)
         {
-            LuaLibAPI.lua_checkstack(bLuaNative._state, 3);
+            LuaLibAPI.lua_checkstack(bLua._state, 3);
             PushStack(val);
-            LuaLibAPI.lua_geti(bLuaNative._state, -1, index);
+            LuaLibAPI.lua_geti(bLua._state, -1, index);
             var result = PopStackIntoValue();
             PopStack();
             return result;
@@ -568,25 +568,25 @@ namespace bLua.NativeLua
         {
             PushStack(array);
             PushStack(newVal);
-            LuaLibAPI.lua_seti(bLuaNative._state, -2, index);
+            LuaLibAPI.lua_seti(bLua._state, -2, index);
             PopStack();
         }
 
         public static void AppendArray(bLuaValue array, bLuaValue newVal)
         {
             PushStack(array);
-            int len = (int)LuaLibAPI.lua_rawlen(bLuaNative._state, -1);
+            int len = (int)LuaLibAPI.lua_rawlen(bLua._state, -1);
             PushStack(newVal);
-            LuaLibAPI.lua_seti(bLuaNative._state, -2, len + 1);
+            LuaLibAPI.lua_seti(bLua._state, -2, len + 1);
             PopStack();
         }
 
         public static void AppendArray(bLuaValue array, object newVal)
         {
             PushStack(array);
-            int len = (int)LuaLibAPI.lua_rawlen(bLuaNative._state, -1);
+            int len = (int)LuaLibAPI.lua_rawlen(bLua._state, -1);
             PushObjectOntoStack(newVal);
-            LuaLibAPI.lua_seti(bLuaNative._state, -2, len + 1);
+            LuaLibAPI.lua_seti(bLua._state, -2, len + 1);
             PopStack();
         }
         #endregion // Arrays

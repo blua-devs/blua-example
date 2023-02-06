@@ -7,7 +7,7 @@ using bLua.NativeLua;
 
 namespace bLua
 {
-    public class bLuaValue : System.IDisposable
+    public class bLuaValue : IDisposable
     {
         public static void DeInit()
         {
@@ -26,7 +26,7 @@ namespace bLua
         public static int REFNIL = -1;
 
         public int refid = NOREF;
-        public bLua.DataType dataType = DataType.Unknown;
+        public DataType dataType = DataType.Unknown;
 
         public static System.Collections.Concurrent.ConcurrentQueue<int> deleteQueue = new System.Collections.Concurrent.ConcurrentQueue<int>();
 
@@ -277,7 +277,7 @@ namespace bLua
 
         
 
-        public bLua.DataType Type
+        public DataType Type
         {
             get
             {
@@ -396,11 +396,11 @@ namespace bLua
             get
             {
 #if UNITY_EDITOR
-                int nstack = LuaLibAPI.lua_gettop(bLuaNative._state);
+                int nstack = LuaLibAPI.lua_gettop(bLua._state);
 #endif
 
                 Lua.PushStack(this);
-                int res = LuaLibAPI.lua_getmetatable(bLuaNative._state, -1);
+                int res = LuaLibAPI.lua_getmetatable(bLua._state, -1);
                 if (res == 0)
                 {
                     Lua.PopStack();
@@ -411,7 +411,7 @@ namespace bLua
                 Lua.PopStack();
 
 #if UNITY_EDITOR
-                Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(bLuaNative._state));
+                Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(bLua._state));
 #endif
 
                 return result;
@@ -420,7 +420,7 @@ namespace bLua
             {
                 Lua.PushStack(this);
                 Lua.PushStack(value);
-                LuaLibAPI.lua_setmetatable(bLuaNative._state, -2);
+                LuaLibAPI.lua_setmetatable(bLua._state, -2);
                 Lua.PopStack();
             }
         }
@@ -663,7 +663,7 @@ namespace bLua
 
         public bLuaValue Call(params object[] args)
         {
-            return bLuaNative.Call(this, args);
+            return bLua.Call(this, args);
         }
 
         //table operations.
@@ -746,14 +746,14 @@ namespace bLua
             }
 
 #if UNITY_EDITOR
-            int nstack = LuaLibAPI.lua_gettop(bLuaNative._state);
+            int nstack = LuaLibAPI.lua_gettop(bLua._state);
 #endif
 
             Lua.PushStack(this);
             var result = Lua.PopList();
 
 #if UNITY_EDITOR
-            Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(bLuaNative._state));
+            Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(bLua._state));
 #endif
 
             return result;
@@ -767,13 +767,13 @@ namespace bLua
             }
 
 #if UNITY_EDITOR
-            int nstack = LuaLibAPI.lua_gettop(bLuaNative._state);
+            int nstack = LuaLibAPI.lua_gettop(bLua._state);
 #endif
 
             Lua.PushStack(this);
             var result = Lua.PopListOfStrings();
 #if UNITY_EDITOR
-            Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(bLuaNative._state));
+            Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(bLua._state));
 #endif
 
             return result;
@@ -782,14 +782,14 @@ namespace bLua
         public Dictionary<string,bLuaValue> Dict()
         {
 #if UNITY_EDITOR
-            int nstack = LuaLibAPI.lua_gettop(bLuaNative._state);
+            int nstack = LuaLibAPI.lua_gettop(bLua._state);
 #endif
 
             Lua.PushStack(this);
             var result = Lua.PopDict();
 
 #if UNITY_EDITOR
-            Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(bLuaNative._state));
+            Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(bLua._state));
 #endif
 
             return result;
@@ -804,14 +804,14 @@ namespace bLua
         public List<Pair> Pairs()
         {
 #if UNITY_EDITOR
-            int nstack = LuaLibAPI.lua_gettop(bLuaNative._state);
+            int nstack = LuaLibAPI.lua_gettop(bLua._state);
 #endif
 
             Lua.PushStack(this);
             var result = Lua.PopFullDict();
 
 #if UNITY_EDITOR
-            Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(bLuaNative._state));
+            Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(bLua._state));
 #endif
 
 
@@ -823,7 +823,7 @@ namespace bLua
             get
             {
 #if UNITY_EDITOR
-                int nstack = LuaLibAPI.lua_gettop(bLuaNative._state);
+                int nstack = LuaLibAPI.lua_gettop(bLua._state);
 #endif
 
                 var result = Pairs();
@@ -834,7 +834,7 @@ namespace bLua
                 }
 
 #if UNITY_EDITOR
-                Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(bLuaNative._state));
+                Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(bLua._state));
 #endif
 
                 return values;
@@ -865,14 +865,14 @@ namespace bLua
             get
             {
 #if UNITY_EDITOR
-                int nstack = LuaLibAPI.lua_gettop(bLuaNative._state);
+                int nstack = LuaLibAPI.lua_gettop(bLua._state);
 #endif
 
                 Lua.PushStack(this);
                 var result = Lua.PopTableEmpty();
 
 #if UNITY_EDITOR
-                Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(bLuaNative._state));
+                Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(bLua._state));
 #endif
 
                 return result;
@@ -925,17 +925,17 @@ namespace bLua
             }
 
 #if UNITY_EDITOR
-            int nstack = LuaLibAPI.lua_gettop(bLuaNative._state);
+            int nstack = LuaLibAPI.lua_gettop(bLua._state);
 #endif
 
             Lua.PushStack(this);
             Lua.PushStack(other);
 
-            int res = LuaLibAPI.lua_rawequal(bLuaNative._state, -1, -2);
-            Lua.LuaPop(bLuaNative._state, 2);
+            int res = LuaLibAPI.lua_rawequal(bLua._state, -1, -2);
+            Lua.LuaPop(bLua._state, 2);
 
 #if UNITY_EDITOR
-            Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(bLuaNative._state));
+            Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(bLua._state));
 #endif
 
 

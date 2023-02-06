@@ -124,7 +124,7 @@ namespace bLua
         public SceneChangedBehaviour sceneChangedBehaviour = SceneChangedBehaviour.ReInit;
     }
 
-    public static class bLuaNative
+    public static class bLua
     {
         static bLuaSettings settings = new bLuaSettings();
 
@@ -469,7 +469,7 @@ namespace bLua
             {
                 using (Lua.s_profileLuaGC.Auto())
                 {
-                    bLuaNative.Call(_forcegc);
+                    bLua.Call(_forcegc);
                 }
                 _lastgc = bLuaGlobalLibrary.time;
             }
@@ -530,8 +530,8 @@ namespace bLua
         {
             get
             {
-                LuaLibAPI.lua_getglobal(bLuaNative._state, "builtin_coroutines");
-                int len = (int)LuaLibAPI.lua_rawlen(bLuaNative._state, -1);
+                LuaLibAPI.lua_getglobal(bLua._state, "builtin_coroutines");
+                int len = (int)LuaLibAPI.lua_rawlen(bLua._state, -1);
                 Lua.PopStack();
                 return len;
             }
@@ -558,16 +558,16 @@ namespace bLua
         #region Globals
         public static bLuaValue GetGlobal(string key)
         {
-            int resType = LuaLibAPI.lua_getglobal(bLuaNative._state, key);
+            int resType = LuaLibAPI.lua_getglobal(bLua._state, key);
             var result = Lua.PopStackIntoValue();
-            result.dataType = (bLua.DataType)resType;
+            result.dataType = (DataType)resType;
             return result;
         }
 
         public static void SetGlobal(string key, bLuaValue val)
         {
             Lua.PushStack(val);
-            LuaLibAPI.lua_setglobal(bLuaNative._state, key);
+            LuaLibAPI.lua_setglobal(bLua._state, key);
         }
         #endregion // Globals
 
@@ -673,7 +673,7 @@ namespace bLua
                 {
                     string error = Lua.GetString(_state, -1);
                     Lua.LuaPop(_state, 1);
-                    bLuaNative.Error($"Error in function call: {error}");
+                    bLua.Error($"Error in function call: {error}");
                     throw new LuaException(error);
                 }
 

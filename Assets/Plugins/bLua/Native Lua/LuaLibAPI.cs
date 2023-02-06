@@ -139,8 +139,14 @@ namespace bLua.NativeLua
         [DllImport(Lua._dllName)]
         public static extern int lua_pcallk(System.IntPtr state, int nargs, int nresults, int msgh, long ctx, System.IntPtr k);
 
+        [StructLayout(LayoutKind.Sequential)]
+        public class CoroutineResult
+        {
+            public int result;
+        }
+
         [DllImport(Lua._dllName)]
-        public static extern int lua_resume(System.IntPtr state, System.IntPtr from, int nargs, bLua.CoroutineResult result);
+        public static extern int lua_resume(System.IntPtr state, System.IntPtr from, int nargs, CoroutineResult result);
 
         [DllImport(Lua._dllName)]
         public static extern void lua_settop(System.IntPtr state, int n);

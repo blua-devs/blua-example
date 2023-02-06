@@ -47,7 +47,7 @@ public class bLuaGlobalLibrary
 
     public static void spawn(bLuaValue _function)
     {
-        bLuaNative.CallCoroutine(_function);
+        bLua.bLua.CallCoroutine(_function);
     }
     #endregion // Methods
 }
