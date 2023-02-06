@@ -23,12 +23,20 @@ public class bLuaUnitTestsEditor : Editor
                 unitTests.RunUnitTests();
             }
         }
-        if (GUILayout.Button("Run Test Coroutines"))
+        if (GUILayout.Button("Run Test Coroutine"))
         {
             bLuaUnitTests unitTests = (bLuaUnitTests)target;
             if (unitTests)
             {
-                unitTests.RunTestCoroutines();
+                unitTests.RunTestCoroutine();
+            }
+        }
+        if (GUILayout.Button("Run Threading Macros"))
+        {
+            bLuaUnitTests unitTests = (bLuaUnitTests)target;
+            if (unitTests)
+            {
+                unitTests.RunThreadingMacros();
             }
         }
     }
@@ -192,45 +200,62 @@ end");
         Assert.AreEqual(bLua.NativeLua.LuaLibAPI.lua_gettop(bLuaNative._state), stackSize);
     }
 
-    public void RunTestCoroutines()
+    public void RunTestCoroutine()
     {
         bLuaNative.Init();
 
         if (Feature.Coroutines.Enabled())
         {
-            bLuaNative.ExecBuffer("co", @"
-function testYield(x)
-    for i=1,x do
-        blua.print('co: ' .. i)
-        coroutine.yield()
-    end
-end");
+            bLuaNative.ExecBuffer("co",
+                @"function testYield(x)
+                    for i=1,x do
+                        blua.print('co: ' .. i)
+                        coroutine.yield()
+                    end
+                end");
             using (bLuaValue fn = bLuaNative.GetGlobal("testYield"))
             {
                 bLuaNative.CallCoroutine(fn, 5);
-            }
-
-            if (Feature.Wait.Enabled())
-            {
-                bLuaNative.ExecBuffer("wait", @"
-function testWait(x)
-    blua.print('waiting ' .. x .. ' seconds')
-    wait(x)
-    blua.print('done waiting')
-end");
-                using (bLuaValue fn = bLuaNative.GetGlobal("testWait"))
-                {
-                    bLuaNative.CallCoroutine(fn, 2);
-                }
-            }
-            else
-            {
-                Debug.Log("Did not test the wait function because the " + Feature.Wait.ToString() + " feature was not enabled.");
             }
         }
         else
         {
             Debug.Log("Did not test coroutines because the " + Feature.Coroutines.ToString() + " feature was not enabled.");
+        }
+    }
+
+    public void RunThreadingMacros()
+    {
+        bLuaNative.Init();
+
+        if (Feature.Coroutines.Enabled()
+            && Feature.ThreadMacros.Enabled())
+        {
+            bLuaNative.ExecBuffer("test_macros",
+                @"function testMacros(x)
+                        blua.print('I print first')
+                        delay(2, function()
+                            blua.print('I print third')
+                        end)
+                        spawn(function()
+                            printStringAfter('I print second', 1)
+                        end)
+                        wait(x)
+                        blua.print('I print last')
+                    end
+
+                    function printStringAfter(s, t)
+                        wait(t)
+                        blua.print(s)
+                    end");
+            using (bLuaValue fn = bLuaNative.GetGlobal("testMacros"))
+            {
+                bLuaNative.CallCoroutine(fn, 3);
+            }
+        }
+        else
+        {
+            Debug.Log("Did not test the wait function because " + Feature.Coroutines.ToString() + " or " + Feature.ThreadMacros.ToString() + " feature(s) was/were not enabled.");
         }
     }
 

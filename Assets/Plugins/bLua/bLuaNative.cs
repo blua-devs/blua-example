@@ -61,9 +61,9 @@ namespace bLua
         /// <remarks> WARNING! Known play mode issues with bLua (C#-managed) garbage collection! Lua has built in GC handling for a vast majority of uses. </remarks>
         /// <summary> bLua (C#-managed) garbage collection. NOTE: Feature.BasicLibrary also needs to be enabled for this feature to work. </summary>
         CSharpGarbageCollection = 1024,
-        /// <summary> Includes a `wait(time)` function that can be used from inside coroutines to wait for a specified amount of time. NOTE: Feature.Coroutines and 
-        /// Feature.bLuaGlobalLibrary also need to be enabled for this feature to work. </summary>
-        Wait = 4096
+        /// <summary> Includes `wait(t)`, `spawn(fn)`, and `delay(t, fn)` functions that can be used for better threading and coroutine control in Lua. NOTE: 
+        /// Feature.Coroutines needs to be enabled for this feature to work. </summary>
+        ThreadMacros = 4096
     }
 
     /// <summary> Sandboxes are groupings of features that let you select premade feature lists for your bLua environment. </summary>
@@ -84,7 +84,7 @@ namespace bLua
             | Feature.OS
             | Feature.Debug
             | Feature.CSharpGarbageCollection
-            | Feature.Wait,
+            | Feature.ThreadMacros,
         /// <remarks> WARNING! Some of these features include developer warnings, please review the remarks on individual features. </remarks>
         /// <summary> Includes most Lua and bLua features, specifically ones that might be used commonly in modding. </summary>
         BasicModding = Feature.BasicLibrary
@@ -94,7 +94,7 @@ namespace bLua
             | Feature.Tables
             | Feature.MathLibrary
             | Feature.IO
-            | Feature.Wait,
+            | Feature.ThreadMacros,
         /// <summary> Includes basic Lua and bLua features, avoiding ones that could be potentially used maliciously. </summary>
         Safe = Feature.BasicLibrary
             | Feature.Coroutines
@@ -102,7 +102,7 @@ namespace bLua
             | Feature.UTF8Support
             | Feature.Tables
             | Feature.MathLibrary
-            | Feature.Wait
+            | Feature.ThreadMacros
     }
 
     public static class bLuaNative
@@ -173,7 +173,7 @@ namespace bLua
                     @"return function(fn, a, b, c, d, e, f, g, h)
                         local co = coroutine.create(fn)
                         local res, error = coroutine.resume(co, a, b, c, d, e, f, g, h)
-                        blua.print('COROUTINE:: call co: %s -> %s -> %s', type(co), type(fn), coroutine.status(co))
+                        --blua.print('COROUTINE:: call co: %s -> %s -> %s', type(co), type(fn), coroutine.status(co))
                         if not res then
                             blua.print(string.format('error in co-routine: %s', error))
                         end
@@ -262,14 +262,22 @@ namespace bLua
                 _forcegc = DoString(@"return function() collectgarbage() end");
             }
 
-            if (Feature.Wait.Enabled())
+            if (Feature.ThreadMacros.Enabled())
             {
-                DoBuffer("wait",
+                DoBuffer("thread_macros",
                     @"function wait(t)
                         local startTime = blua.time
                         while blua.time < startTime + t do
                             coroutine.yield()
                         end
+                    end
+
+                    function spawn(fn)
+                        blua.spawn(fn)
+                    end
+
+                    function delay(t, fn)
+                       blua.delay(t, fn) 
                     end");
             }
             #endregion // Feature Handling

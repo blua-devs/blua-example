@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using UnityEngine;
 using bLua;
 using UnityEngine.Events;
@@ -17,7 +18,7 @@ public class bLuaGlobalLibrary
 
     #region Fields
     /// <summary> Returns a Lua-accessible version of Unity's Time.time. Also works when not in play mode. </summary>
-    static public float time
+    public static float time
     {
         get
         {
@@ -37,11 +38,28 @@ public class bLuaGlobalLibrary
 
     #region Methods
     /// <summary> Prints a string to Unity's logs. </summary>
-    static public void print(string _string)
+    public static void print(string _string)
     {
         Debug.Log(_string);
 
         OnLog.Invoke(_string);
+    }
+
+    public static void spawn(bLuaValue _function)
+    {
+        bLuaNative.CallCoroutine(_function);
+    }
+
+    public static void delay(float _t, bLuaValue _function)
+    {
+        Internal_Delay(_t, _function);
+    }
+
+    [bLuaHidden]
+    private async static void Internal_Delay(float _t, bLuaValue _function)
+    {
+        await Task.Delay(Mathf.RoundToInt(_t * 1000f));
+        bLuaNative.CallCoroutine(_function);
     }
     #endregion // Methods
 }
