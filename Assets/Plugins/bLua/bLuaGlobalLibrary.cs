@@ -49,17 +49,5 @@ public class bLuaGlobalLibrary
     {
         bLuaNative.CallCoroutine(_function);
     }
-
-    public static void delay(float _t, bLuaValue _function)
-    {
-        Internal_Delay(_t, _function);
-    }
-
-    [bLuaHidden]
-    private async static void Internal_Delay(float _t, bLuaValue _function)
-    {
-        await Task.Delay(Mathf.RoundToInt(_t * 1000f));
-        bLuaNative.CallCoroutine(_function);
-    }
     #endregion // Methods
 }

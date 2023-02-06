@@ -1,10 +1,12 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
-using UnityEngine;
 using System.Runtime.InteropServices;
-using System;
 using System.Threading;
 using System.Threading.Tasks;
+using UnityEngine;
+using UnityEngine.Events;
+using UnityEngine.SceneManagement;
 using bLua.NativeLua;
 #if UNITY_EDITOR
 using UnityEditor;
@@ -105,8 +107,27 @@ namespace bLua
             | Feature.ThreadMacros
     }
 
+    /// <summary> Contains settings for the bLua runtime. </summary>
+    public class bLuaSettings
+    {
+        public enum SceneChangedBehaviour
+        {
+            None,
+            DeInit,
+            ReInit
+        }
+
+        /// <summary> The selected sandbox (set of features) for bLua. </summary>
+        public Sandbox sandbox = Sandbox.Safe;
+
+        /// <summary> Controls the behaviour of bLua when the active Unity scene changes. </summary>
+        public SceneChangedBehaviour sceneChangedBehaviour = SceneChangedBehaviour.ReInit;
+    }
+
     public static class bLuaNative
     {
+        static bLuaSettings settings = new bLuaSettings();
+
         /// <summary> The current Lua state (https://www.lua.org/manual/5.4/manual.html#lua_newstate). </summary>
         public static IntPtr _state;
 
@@ -132,6 +153,11 @@ namespace bLua
                 return;
             }
             initialized = true;
+
+            Debug.Log("Initializing bLua");
+
+            SceneManager.activeSceneChanged -= OnActiveSceneChanged; // This can be done safely
+            SceneManager.activeSceneChanged += OnActiveSceneChanged;
 
             // Create a new state for Lua
             _state = LuaXLibAPI.luaL_newstate();
@@ -166,7 +192,7 @@ namespace bLua
                 LuaLibAPI.luaopen_coroutine(_state);
                 LuaLibAPI.lua_setglobal(_state, "coroutine");
 
-                TickHandler += TickCoroutines;
+                OnTick.AddListener(TickCoroutines);
 
                 DoBuffer("builtin_coroutines", @"builtin_coroutines = {}");
                 _callco = DoBuffer("callco",
@@ -204,6 +230,16 @@ namespace bLua
 
                             builtin_coroutines = new_coroutines
                         end
+                    end");
+                _cancelcos = DoBuffer("cancelcos",
+                    @"return function()
+                        for _,co in ipairs(builtin_coroutines) do
+                            local res, error = coroutine.close(co)
+                            if not res then
+                                blua.print(string.format('error closing co-routine: %s', error))
+                            end
+                        end
+                        builtin_coroutines = {}
                     end");
             }
 
@@ -257,7 +293,7 @@ namespace bLua
 
             if (Feature.CSharpGarbageCollection.Enabled())
             {
-                TickHandler += TickGarbageCollection;
+                OnTick.AddListener(TickGarbageCollection);
 
                 _forcegc = DoString(@"return function() collectgarbage() end");
             }
@@ -277,18 +313,37 @@ namespace bLua
                     end
 
                     function delay(t, fn)
-                       blua.delay(t, fn) 
+                        blua.spawn(function()
+                            wait(t)
+                            fn()
+                        end)
                     end");
             }
             #endregion // Feature Handling
 
             // Start the threading needed for running bLua without a MonoBehaviour
-            Tick();
+            StartTicking();
+        }
+
+        static void OnActiveSceneChanged(Scene a, Scene b)
+        {
+            switch (settings.sceneChangedBehaviour)
+            {
+                case bLuaSettings.SceneChangedBehaviour.DeInit:
+                    DeInit();
+                    break;
+                case bLuaSettings.SceneChangedBehaviour.ReInit:
+                    DeInit();
+                    Init();
+                    break;
+            }
         }
 
         public static void DeInit()
         {
-            _ticking = false;
+            Call(_cancelcos);
+
+            StopTicking();
 
             if (_state != IntPtr.Zero)
             {
@@ -297,22 +352,26 @@ namespace bLua
             }
 
             _lookups.Clear();
+
             _forcegc = null;
+            _lastgc = 0f;
+
+            _scheduledCoroutines.Clear();
+            _ncoroutine = 0;
             _callco = null;
             _updateco = null;
+            _cancelcos = null;
 
             bLuaUserData.DeInit();
             bLuaValue.DeInit();
 
             initialized = false;
+
+            Debug.Log("Deinitialized bLua");
         }
         #endregion // Initialization
 
         #region Feature Handling
-        /// <summary> The selected sandbox (set of features) for bLua. </summary>
-        static Sandbox sandbox = Sandbox.Safe;
-
-
         /// <summary> Returns true if the current sandbox has the passed feature enabled. </summary>
         public static bool FeatureEnabled(Feature _feature)
         {
@@ -322,20 +381,20 @@ namespace bLua
         /// <summary> Returns true if the current sandbox has the passed feature enabled. </summary>
         public static bool Enabled(this Feature _feature)
         {
-            return ((Feature)(int)sandbox).HasFlag(_feature);
+            return ((Feature)(int)settings.sandbox).HasFlag(_feature);
         }
         #endregion // Feature Handling
 
         #region Tick
-        public delegate void TickDelegate();
-        /// <summary> This delegate is called whenever bLua ticks. Allows for bLua features (or developers) to listen for when ticking takes place. </summary>
-        public static TickDelegate TickHandler;
+        /// <summary> This event is called whenever bLua ticks. Allows for bLua features (or developers) to listen for when ticking takes place. </summary>
+        public static UnityEvent OnTick = new UnityEvent();
 
         /// <summary> The millisecond delay between bLua ticks. </summary>
         static public int tickDelay = 10; // 10 = 100 ticks per second
 
-        /// <summary> Whether or not bLua is ticking. Set to false to close the ticking thread if it exists. </summary>
         static bool _ticking = false;
+        static bool _requestStartTicking = false;
+        static bool _requestStopTicking = false;
 
 
         async static void Tick()
@@ -345,18 +404,45 @@ namespace bLua
             {
                 return;
             }
+
             _ticking = true;
+            _requestStartTicking = false;
 
             // Only continue ticking while this value is set. This allows us to close the tick thread from outside of it when we need to
-            while (_ticking)
+            while (!_requestStopTicking)
             {
-                if (TickHandler != null)
+                if (OnTick != null)
                 {
-                    TickHandler();
+                    OnTick.Invoke();
                 }
 
                 await Task.Delay(tickDelay);
             }
+
+            _ticking = false;
+            _requestStopTicking = false;
+
+            if (OnTick != null)
+            {
+                OnTick.RemoveAllListeners();
+            }
+
+            // If we've already re-requested to start ticking again, go ahead and handle that here as the previous Tick() call would have failed
+            if (_requestStartTicking)
+            {
+                StartTicking();
+            }
+        }
+
+        static void StartTicking()
+        {
+            Tick();
+            _requestStartTicking = true;
+        }
+
+        static void StopTicking()
+        {
+            _requestStopTicking = true;
         }
         #endregion // Tick
 
@@ -397,6 +483,7 @@ namespace bLua
 
         static bLuaValue _callco = null;
         static bLuaValue _updateco = null;
+        static bLuaValue _cancelcos = null;
 
         static List<ScheduledCoroutine> _scheduledCoroutines = new List<ScheduledCoroutine>();
 

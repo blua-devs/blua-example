@@ -18,17 +18,6 @@ public class UnitTestsEditor : Editor
 
         GUILayout.Space(10);
 
-        if (GUILayout.Button("Run All"))
-        {
-            UnitTests unitTests = (UnitTests)target;
-            if (unitTests)
-            {
-                unitTests.RunAllTests();
-            }
-        }
-
-        GUILayout.Space(10);
-
         if (GUILayout.Button("Run Unit Tests"))
         {
             UnitTests unitTests = (UnitTests)target;
@@ -50,7 +39,7 @@ public class UnitTestsEditor : Editor
             UnitTests unitTests = (UnitTests)target;
             if (unitTests)
             {
-                unitTests.RunThreadingMacros();
+                unitTests.RunThreadMacros();
             }
         }
     }
@@ -61,31 +50,31 @@ public class UnitTests : MonoBehaviour
 {
 
 
-    private void Start()
+    private void Update()
     {
-        RunAllTests();
+        if (Input.GetKeyDown(KeyCode.Alpha1))
+        {
+            RunUnitTests();
+        }
+        if (Input.GetKeyDown(KeyCode.Alpha2))
+        {
+            RunTestCoroutine();
+        }
+        if (Input.GetKeyDown(KeyCode.Alpha3))
+        {
+            RunThreadMacros();
+        }
     }
 
     private void OnGUI()
     {
-        GUI.Box(new Rect(10, 10, 300, 60), "Unit Test Play Helper");
-        GUI.Label(new Rect(20, 30, 260, 40), "Open the Window > General > Console to view results!");
-    }
+        GUI.Box(new Rect(10, 10, 300, 150), "Unit Test Play Helper");
 
-    async public void RunAllTests()
-    {
-        Debug.Log("Starting Unit Tests");
-        RunUnitTests();
+        GUI.Label(new Rect(20, 35, 260, 60), "Click `Unit Tests` in the Hierarchy, then view the Details panel for options. Open the Window > General > Console to view results.");
 
-        await Task.Delay(1000);
-
-        Debug.Log("Starting Coroutine Test");
-        RunTestCoroutine();
-
-        await Task.Delay(1000);
-
-        Debug.Log("Starting Thread Macros Test");
-        RunThreadingMacros();
+        GUI.Label(new Rect(20, 90, 260, 20), "Press 1 to run Unit Tests");
+        GUI.Label(new Rect(20, 110, 260, 20), "Press 2 to run Test Coroutine");
+        GUI.Label(new Rect(20, 130, 260, 20), "Press 3 to run Thread Macros");
     }
 
     public void RunUnitTests()
@@ -94,69 +83,69 @@ public class UnitTests : MonoBehaviour
 
         int stackSize = bLua.NativeLua.LuaLibAPI.lua_gettop(bLuaNative._state);
 
-        bLuaNative.ExecBuffer("main", @"
-print('hello world')
-MyFunctions = {
-}
+        bLuaNative.ExecBuffer("main",
+            @"blua.print('Starting Unit Tests')
 
-function MyFunctions.blah(y)
-    return y
-end
+            MyFunctions = {}
 
-function myfunction(x)
-    return x + 5
-end
+            function MyFunctions.blah(y)
+                return y
+            end
 
-function lotsofargs(a,b,c,d,e,f,g)
-    return a+b+c+d+e+f+g
-end
+            function myfunction(x)
+                return x + 5
+            end
 
-function make_table()
-    return {
-        xyz = 5,
-        abc = 9,
-        def = 7,
-    }
-end
+            function lotsofargs(a,b,c,d,e,f,g)
+                return a+b+c+d+e+f+g
+            end
 
-function add_from_table(options)
-    return options.a + options.b + options.c
-end
+            function make_table()
+                return {
+                    xyz = 5,
+                    abc = 9,
+                    def = 7,
+                }
+            end
+
+            function add_from_table(options)
+                return options.a + options.b + options.c
+            end
 
 
-function make_big_table()
-    local result = {}
-    for i=1,1000 do
-        result[tostring(i)] = i
-    end
-    return result
-end
+            function make_big_table()
+                local result = {}
+                for i=1,1000 do
+                    result[tostring(i)] = i
+                end
+                return result
+            end
 
-function test_userdata(u)
-    return u.StaticFunction(0) + u.StaticFunction(2,3,4) + u:MyFunction() + u.propertyTest
-end
+            function test_userdata(u)
+                return u.StaticFunction(0) + u.StaticFunction(2,3,4) + u:MyFunction() + u.propertyTest
+            end
 
-function incr_userdata(a)
-    a.propertyTest = a.propertyTest + 1
-end
+            function incr_userdata(a)
+                a.propertyTest = a.propertyTest + 1
+            end
 
-function test_addstrings(x, a, b)
-    return x:AddStrings(a,b)
-end
+            function test_addstrings(x, a, b)
+                return x:AddStrings(a,b)
+            end
 
-function test_field(x)
-    x.n = x.n + 2
-    return x.n
-end
+            function test_field(x)
+                x.n = x.n + 2
+                return x.n
+            end
 
-function test_varargs(x)
-    x:VarArgsParamsFunction(3, x, x, 4, x)
-    return x:VarArgsFunction(2, 3, 4, 5, 6)
-end
+            function test_varargs(x)
+                x:VarArgsParamsFunction(3, x, x, 4, x)
+                return x:VarArgsFunction(2, 3, 4, 5, 6)
+            end
 
-function test_classproperty(x, n)
-    return x.Create(n).n
-end");
+            function test_classproperty(x, n)
+                return x.Create(n).n
+            end");
 
         using (bLuaValue fn = bLuaNative.GetGlobal("myfunction"))
         {
@@ -243,18 +232,22 @@ end");
 
     public void RunTestCoroutine()
     {
+        Debug.Log("Starting Test Coroutine");
+
         bLuaNative.Init();
 
         if (Feature.Coroutines.Enabled())
         {
             bLuaNative.ExecBuffer("co",
-                @"function testYield(x)
+                @"blua.print('Started Test Coroutine')
+
+                function testYield(x)
                     for i=1,x do
                         blua.print('co: ' .. i)
                         coroutine.yield()
                     end
 
-                    blua.print('Finished Coroutine Test')
+                    blua.print('Finished Test Coroutine')
                 end");
             using (bLuaValue fn = bLuaNative.GetGlobal("testYield"))
             {
@@ -267,7 +260,7 @@ end");
         }
     }
 
-    public void RunThreadingMacros()
+    public void RunThreadMacros()
     {
         bLuaNative.Init();
 
@@ -275,23 +268,25 @@ end");
             && Feature.ThreadMacros.Enabled())
         {
             bLuaNative.ExecBuffer("test_macros",
-                @"function testMacros(x)
-                        blua.print('I print first')
-                        delay(2, function()
-                            blua.print('I print third')
-                        end)
-                        spawn(function()
-                            printStringAfter('I print second', 1)
-                        end)
-                        wait(x)
-                        blua.print('I print last')
-                        blua.print('Finished Thread Macros Test')
-                    end
+                @"blua.print('Starting Thread Macros')
 
-                    function printStringAfter(s, t)
-                        wait(t)
-                        blua.print(s)
-                    end");
+                function testMacros(x)
+                    blua.print('I print first')
+                    delay(2, function()
+                        blua.print('I print third')
+                    end)
+                    spawn(function()
+                        printStringAfter('I print second', 1)
+                    end)
+                    wait(x)
+                    blua.print('I print last')
+                    blua.print('Finished Thread Macros')
+                end
+
+                function printStringAfter(s, t)
+                    wait(t)
+                    blua.print(s)
+                end");
             using (bLuaValue fn = bLuaNative.GetGlobal("testMacros"))
             {
                 bLuaNative.CallCoroutine(fn, 3);
