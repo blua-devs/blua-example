@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using Unity.Profiling;
 
 namespace bLua.NativeLua
 {
@@ -21,6 +22,11 @@ namespace bLua.NativeLua
         public static int LUA_TNONE = -1;
         public static int LUAI_MAXSTACK = 1000000;
         public static int LUA_REGISTRYINDEX = (-LUAI_MAXSTACK - 1000);
+
+        public static ProfilerMarker s_profileLuaGC = new ProfilerMarker("Lua.GC");
+        public static ProfilerMarker s_profileLuaCo = new ProfilerMarker("Lua.Coroutine");
+        public static ProfilerMarker s_profileLuaCall = new ProfilerMarker("Lua.Call");
+        public static ProfilerMarker s_profileLuaCallInner = new ProfilerMarker("Lua.CallInner");
 
         static StrLen s_strlen = new StrLen();
 
