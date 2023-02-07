@@ -421,6 +421,8 @@ namespace bLua
 
             StopTicking();
 
+            handle.Dispose();
+
             lookups.Clear();
 
             scheduledCoroutines.Clear();
@@ -439,8 +441,6 @@ namespace bLua
 
             s_internedStrings.Clear();
             Array.Clear(s_stringCache, 0, s_stringCache.Length);
-
-            handle.Dispose();
 
             initialized = false;
 
@@ -743,7 +743,7 @@ namespace bLua
 
         public static int CallFunction(IntPtr _state)
         {
-            bLuaInstance inst = null;
+            bLuaInstance inst = LuaHandle.GetHandleFromRegistry(_state).instance;
 
             var stateBack = inst.handle.state;
             inst.handle.SetState(_state);
@@ -865,7 +865,7 @@ namespace bLua
 
         public static int CallStaticFunction(IntPtr _state)
         {
-            bLuaInstance inst = null;
+            bLuaInstance inst = LuaHandle.GetHandleFromRegistry(_state).instance;
 
             var stateBack = inst.handle.state;
             inst.handle.SetState(_state);
@@ -949,7 +949,7 @@ namespace bLua
 
         public static int IndexFunction(IntPtr _state)
         {
-            bLuaInstance inst = null;
+            bLuaInstance inst = LuaHandle.GetHandleFromRegistry(_state).instance;
 
             var stateBack = inst.handle.state;
             try
@@ -1029,7 +1029,7 @@ namespace bLua
 
         public static int SetIndexFunction(IntPtr _state)
         {
-            bLuaInstance inst = null;
+            bLuaInstance inst = LuaHandle.GetHandleFromRegistry(_state).instance;
 
             var stateBack = inst.handle.state;
             inst.handle.SetState(_state);
@@ -1096,14 +1096,13 @@ namespace bLua
 
         public static int GCFunction(IntPtr _state)
         {
-            /*
+            bLuaInstance inst = LuaHandle.GetHandleFromRegistry(_state).instance;
+
             LuaLibAPI.lua_checkstack(_state, 1);
             LuaLibAPI.lua_getiuservalue(_state, 1, 1);
-            int n = LuaLibAPI.lua_tointegerx(handle.state, -1, IntPtr.Zero);
-            s_liveObjects[n] = null;
-            s_liveObjectsFreeList.Add(n);
-            return 0;
-            */
+            int n = LuaLibAPI.lua_tointegerx(inst.handle.state, -1, IntPtr.Zero);
+            inst.s_liveObjects[n] = null;
+            inst.s_liveObjectsFreeList.Add(n);
             return 0;
         }
     }
