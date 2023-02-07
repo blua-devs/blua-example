@@ -122,6 +122,12 @@ namespace bLua
 
         /// <summary> Controls the behaviour of bLua when the active Unity scene changes. </summary>
         public SceneChangedBehaviour sceneChangedBehaviour = SceneChangedBehaviour.ReInit;
+
+        /// <summary> When true, bLua scripts will not tick automatically. You should call ManualTick() instead. </summary>
+        public bool manualTicking = false;
+
+        /// <summary> The millisecond delay between bLua ticks. </summary>
+        public int tickDelay = 10; // 10 = 100 ticks per second
     }
 
     public static class bLua
@@ -329,8 +335,11 @@ namespace bLua
             }
             #endregion // Feature Handling
 
-            // Start the threading needed for running bLua without a MonoBehaviour
-            StartTicking();
+            if (!settings.manualTicking)
+            {
+                // Start the threading needed for running bLua without a MonoBehaviour
+                StartTicking();
+            }
         }
 
         static void OnActiveSceneChanged(Scene a, Scene b)
@@ -403,13 +412,15 @@ namespace bLua
         /// <summary> This event is called whenever bLua ticks. Allows for bLua features (or developers) to listen for when ticking takes place. </summary>
         public static UnityEvent OnTick = new UnityEvent();
 
-        /// <summary> The millisecond delay between bLua ticks. </summary>
-        static public int tickDelay = 10; // 10 = 100 ticks per second
-
         static bool _ticking = false;
         static bool _requestStartTicking = false;
         static bool _requestStopTicking = false;
 
+
+        public static void ManualTick()
+        {
+            InternalTick();
+        }
 
         async static void Tick()
         {
@@ -425,12 +436,9 @@ namespace bLua
             // Only continue ticking while this value is set. This allows us to close the tick thread from outside of it when we need to
             while (!_requestStopTicking)
             {
-                if (OnTick != null)
-                {
-                    OnTick.Invoke();
-                }
+                InternalTick();
 
-                await Task.Delay(tickDelay);
+                await Task.Delay(settings.tickDelay);
             }
 
             _ticking = false;
@@ -440,6 +448,14 @@ namespace bLua
             if (_requestStartTicking)
             {
                 StartTicking();
+            }
+        }
+
+        static void InternalTick()
+        {
+            if (OnTick != null)
+            {
+                OnTick.Invoke();
             }
         }
 
