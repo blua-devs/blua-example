@@ -9,12 +9,6 @@ namespace bLua
 {
     public class bLuaValue : IDisposable
     {
-        public static void DeInit()
-        {
-            s_internedStrings.Clear();
-            Array.Clear(s_stringCache, 0, s_stringCache.Length);
-        }
-
 #if UNITY_EDITOR
         public static int nLive = 0;
         public static int nLiveHighWater = 0;
@@ -28,8 +22,6 @@ namespace bLua
         public int refid = NOREF;
         public DataType dataType = DataType.Unknown;
 
-        public static System.Collections.Concurrent.ConcurrentQueue<int> deleteQueue = new System.Collections.Concurrent.ConcurrentQueue<int>();
-
         public int ReferenceID
         {
             get
@@ -37,6 +29,8 @@ namespace bLua
                 return refid;
             }
         }
+
+        bLuaInstance instance;
 
         static public bLuaValue True = null;
         static public bLuaValue False = null;
@@ -50,7 +44,6 @@ namespace bLua
         {
             return Nil;
         }
-
 
         public static bLuaValue CreateNil()
         {
@@ -77,152 +70,113 @@ namespace bLua
             return refid != REFNIL;
         }
 
-
         public bool IsTable()
         {
             return Type == DataType.Table;
         }
 
-        static Dictionary<string, bLuaValue> s_internedStrings = new Dictionary<string, bLuaValue>();
-        public static bLuaValue InternString(string s)
+        public static bLuaValue CreateString(bLuaInstance _instance, string _string)
         {
-            bLuaValue result;
-            if (s_internedStrings.TryGetValue(s, out result))
+            if (_string == null)
             {
-                return result;
+                return Nil;
             }
 
-            result = CreateString(s);
-            s_internedStrings.Add(s, result);
-            return result;
-        }
-
-        public static bLuaValue NewString(string s)
-        {
-            return CreateString(s);
-        }
-
-        struct StringCacheEntry
-        {
-            public string key;
-            public bLuaValue value;
-        }
-
-        static public int s_stringCacheHit = 0, s_stringCacheMiss = 0;
-
-        static StringCacheEntry[] s_stringCache = new StringCacheEntry[997];
-
-        public static bLuaValue CreateString(string s)
-        {
-            if (s == null)
+            if (_string.Length < 32)
             {
-                return bLuaValue.Nil;
-            }
-
-            if (s.Length < 32)
-            {
-                uint hash = (uint)s.GetHashCode();
-                uint n = hash % (uint)s_stringCache.Length;
-                var entry = s_stringCache[n];
-                if (entry.key == s)
+                uint hash = (uint)_string.GetHashCode();
+                uint n = hash % (uint)_instance.s_stringCache.Length;
+                var entry = _instance.s_stringCache[n];
+                if (entry.key == _string)
                 {
-                    UnityEngine.Assertions.Assert.AreEqual(entry.key, entry.value.String);
-                    ++s_stringCacheHit;
+                    Assert.AreEqual(entry.key, entry.value.String);
+                    ++_instance.s_stringCacheHit;
                     return entry.value;
                 } else
                 {
-                    Lua.PushObjectOntoStack(s);
-                    var result = Lua.PopStackIntoValue();
+                    Lua.PushObjectOntoStack(_instance, _string);
+                    bLuaValue result = Lua.PopStackIntoValue(_instance);
 
-                    entry.key = s;
+                    entry.key = _string;
                     entry.value = result;
-                    s_stringCache[n] = entry;
-                    ++s_stringCacheMiss;
+                    _instance.s_stringCache[n] = entry;
+                    ++_instance.s_stringCacheMiss;
                     return result;
                 }
             }
 
-            Lua.PushObjectOntoStack(s);
-            return Lua.PopStackIntoValue();
+            Lua.PushObjectOntoStack(_instance, _string);
+            return Lua.PopStackIntoValue(_instance);
         }
 
-        public static bLuaValue UniqueString(string s)
+        public static bLuaValue CreateNumber(bLuaInstance _instance, double _double)
         {
-            if (s == null)
-            {
-                return bLuaValue.Nil;
-            }
-
-            Lua.PushObjectOntoStack(s);
-            return Lua.PopStackIntoValue();
+            Lua.PushObjectOntoStack(_instance, _double);
+            return Lua.PopStackIntoValue(_instance);
         }
 
-        public static bLuaValue CreateNumber(double d)
+        public static bLuaValue CreateBool(bLuaInstance _instance, bool _bool)
         {
-            Lua.PushObjectOntoStack(d);
-            return Lua.PopStackIntoValue();
+            return _bool ? True : False;
         }
 
-        public static bLuaValue CreateBool(bool b)
+        public static bLuaValue CreateTable(bLuaInstance _instance, int _reserveArray = 0, int _reserveTable = 0)
         {
-            return b ? True : False;
+            Lua.PushNewTable(_instance, _reserveArray, _reserveTable);
+            return Lua.PopStackIntoValue(_instance);
         }
 
-        //easy compatibility.
-        public static bLuaValue NewTable()
+        public static bLuaValue CreateFunction(bLuaInstance _instance, LuaCFunction _fn)
         {
-            return CreateTable();
+            Lua.LuaPushCFunction(_instance, _fn);
+            return Lua.PopStackIntoValue(_instance);
         }
 
-        public static bLuaValue CreateTable(int reserveArray=0, int reserveTable=0)
+        public static bLuaValue CreateClosure(bLuaInstance _instance, LuaCFunction _fn, params bLuaValue[] _upvalues)
         {
-
-            Lua.PushNewTable(reserveArray, reserveTable);
-            return Lua.PopStackIntoValue();
+            Lua.PushClosure(_instance, _fn, _upvalues);
+            return Lua.PopStackIntoValue(_instance);
         }
 
-        public static bLuaValue CreateFunction(Lua.LuaCFunction fn)
+        public static bLuaValue CreateUserData(bLuaInstance _instance, object _object)
         {
-            Lua.LuaPushCFunction(fn);
-            return Lua.PopStackIntoValue();
-        }
-
-        public static bLuaValue CreateClosure(Lua.LuaCFunction fn, params bLuaValue[] upvalues)
-        {
-            Lua.PushClosure(fn, upvalues);
-            return Lua.PopStackIntoValue();
-        }
-
-        public static bLuaValue CreateUserData(object obj)
-        {
-            if (obj == null)
+            if (_object == null)
             {
                 return Nil;
             }
-            bLuaUserData.PushNewUserData(obj);
-            return Lua.PopStackIntoValue();
+            bLuaUserData.PushNewUserData(_instance, _object);
+            return Lua.PopStackIntoValue(_instance);
         }
 
-        public static bLuaValue FromObject(object obj)
+        public static bLuaValue FromObject(bLuaInstance _instance, object _object)
         {
-            Lua.PushObjectOntoStack(obj);
-            return Lua.PopStackIntoValue();
+            Lua.PushObjectOntoStack(_instance, _object);
+            return Lua.PopStackIntoValue(_instance);
         }
 
         public bLuaValue()
         {
-#if UNITY_EDITOR
-            System.Threading.Interlocked.Increment(ref nLive);
-            if (nLive > nLiveHighWater)
-            {
-                nLiveHighWater = nLive;
-            }
-#endif
-
+            FinishConstruction();
             refid = REFNIL;
-            ++nTotalCreated;
+
+            instance = null;
         }
-        public bLuaValue(int refid_)
+
+        public bLuaValue(bLuaInstance _instance)
+        {
+            FinishConstruction();
+            refid = REFNIL;
+            instance = _instance;
+        }
+
+        public bLuaValue(bLuaInstance _instance, int _refid)
+        {
+            FinishConstruction();
+            refid = _refid;
+            instance = _instance;
+        }
+
+        void FinishConstruction()
         {
 #if UNITY_EDITOR
             System.Threading.Interlocked.Increment(ref nLive);
@@ -231,9 +185,6 @@ namespace bLua
                 nLiveHighWater = nLive;
             }
 #endif
-
-
-            refid = refid_;
             ++nTotalCreated;
         }
 
@@ -262,20 +213,18 @@ namespace bLua
             {
                 if (deterministic)
                 {
-                    Lua.DestroyDynValue(refid);
+                    Lua.DestroyDynValue(instance, refid);
                 }
+                // remnant from C#-managed GC
+                /*
                 else
                 {
-                    if (Feature.CSharpGarbageCollection.Enabled())
-                    {
-                        deleteQueue.Enqueue(refid);
-                    }
+                    deleteQueue.Enqueue(refid);
                 }
+                */
                 refid = NOREF;
             }
         }
-
-        
 
         public DataType Type
         {
@@ -283,9 +232,9 @@ namespace bLua
             {
                 if (dataType == DataType.Unknown)
                 {
-                    Lua.PushStack(this);
-                    dataType = Lua.InspectTypeOnTopOfStack();
-                    Lua.PopStack();
+                    Lua.PushStack(instance, this);
+                    dataType = Lua.InspectTypeOnTopOfStack(instance);
+                    Lua.PopStack(instance);
                 }
 
                 return dataType;
@@ -296,8 +245,8 @@ namespace bLua
         {
             get
             {
-                Lua.PushStack(this);
-                return Lua.PopNumber();
+                Lua.PushStack(instance, this);
+                return Lua.PopNumber(instance);
             }
         }
 
@@ -305,8 +254,8 @@ namespace bLua
         {
             get
             {
-                Lua.PushStack(this);
-                return Lua.PopInteger();
+                Lua.PushStack(instance, this);
+                return Lua.PopInteger(instance);
             }
         }
 
@@ -314,23 +263,22 @@ namespace bLua
         {
             get
             {
-                Lua.PushStack(this);
-                return Lua.PopBool();
+                Lua.PushStack(instance, this);
+                return Lua.PopBool(instance);
             }
         }
-
 
         public string String
         {
             get
             {
-                int t = Lua.PushStack(this);
+                int t = Lua.PushStack(instance, this);
                 if (t == (int)DataType.String)
                 {
-                    return Lua.PopString();
+                    return Lua.PopString(instance);
                 }
 
-                Lua.PopStack();
+                Lua.PopStack(instance);
                 return null;
             }
         }
@@ -357,11 +305,10 @@ namespace bLua
                     return null;
                 }
 
-                Lua.PushStack(this);
-                object result = bLuaUserData.GetUserDataObject(-1);
-                Lua.PopStack();
+                Lua.PushStack(instance, this);
+                object result = bLuaUserData.GetUserDataObject(instance, - 1);
+                Lua.PopStack(instance);
                 return result;
-
             }
         }
 
@@ -395,69 +342,69 @@ namespace bLua
         {
             get
             {
-#if UNITY_EDITOR
-                int nstack = LuaLibAPI.lua_gettop(bLua._state);
-#endif
+    #if UNITY_EDITOR
+                int nstack = LuaLibAPI.lua_gettop(instance.handle.state);
+    #endif
 
-                Lua.PushStack(this);
-                int res = LuaLibAPI.lua_getmetatable(bLua._state, -1);
+                Lua.PushStack(instance, this);
+                int res = LuaLibAPI.lua_getmetatable(instance.handle.state, -1);
                 if (res == 0)
                 {
-                    Lua.PopStack();
+                    Lua.PopStack(instance);
                     return Nil;
                 }
 
-                var result = Lua.PopStackIntoValue();
-                Lua.PopStack();
+                var result = Lua.PopStackIntoValue(instance);
+                Lua.PopStack(instance);
 
-#if UNITY_EDITOR
-                Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(bLua._state));
-#endif
+    #if UNITY_EDITOR
+                Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(instance.handle.state));
+    #endif
 
                 return result;
             }
             set
             {
-                Lua.PushStack(this);
-                Lua.PushStack(value);
-                LuaLibAPI.lua_setmetatable(bLua._state, -2);
-                Lua.PopStack();
+                Lua.PushStack(instance, this);
+                Lua.PushStack(instance, value);
+                LuaLibAPI.lua_setmetatable(instance.handle.state, -2);
+                Lua.PopStack(instance);
             }
         }
 
         public bool? CastToOptionalBool()
         {
-            DataType dataType = (DataType)Lua.PushStack(this);
+            DataType dataType = (DataType)Lua.PushStack(instance, this);
             switch (dataType)
             {
                 case DataType.Boolean:
-                    return Lua.PopBool();
+                    return Lua.PopBool(instance);
                 case DataType.Number:
-                    return Lua.PopNumber() != 0;
+                    return Lua.PopNumber(instance) != 0;
                 case DataType.Nil:
-                    Lua.PopStack();
+                    Lua.PopStack(instance);
                     return null;
                 default:
-                    Lua.PopStack();
+                    Lua.PopStack(instance);
                     return null;
             }
         }
 
-        public bool CastToBool(bool defaultValue=false)
+        public bool CastToBool(bool _defaultValue = false)
         {
-            DataType dataType = (DataType)Lua.PushStack(this);
+            DataType dataType = (DataType)Lua.PushStack(instance, this);
             switch (dataType)
             {
                 case DataType.Boolean:
-                    return Lua.PopBool();
+                    return Lua.PopBool(instance);
                 case DataType.Number:
-                    return Lua.PopNumber() != 0;
+                    return Lua.PopNumber(instance) != 0;
                 case DataType.Nil:
-                    Lua.PopStack();
-                    return defaultValue;
+                    Lua.PopStack(instance);
+                    return _defaultValue;
                 default:
-                    Lua.PopStack();
-                    return defaultValue;
+                    Lua.PopStack(instance);
+                    return _defaultValue;
             }
         }
 
@@ -471,35 +418,35 @@ namespace bLua
             return CastToString();
         }
 
-        public string CastToString(string defaultValue="")
+        public string CastToString(string _defaultValue = "")
         {
-            DataType dataType = (DataType)Lua.PushStack(this);
+            DataType dataType = (DataType)Lua.PushStack(instance, this);
 
             switch (dataType)
             {
                 case DataType.String:
-                    return Lua.PopString();
+                    return Lua.PopString(instance);
                 case DataType.Number:
-                    return Lua.PopNumber().ToString();
+                    return Lua.PopNumber(instance).ToString();
                 case DataType.Boolean:
-                    return Lua.PopBool() ? "true" : "false";
+                    return Lua.PopBool(instance) ? "true" : "false";
                 default:
-                    Lua.PopStack();
-                    return defaultValue;
+                    Lua.PopStack(instance);
+                    return _defaultValue;
             }
         }
 
         public float? CastToOptionalFloat()
         {
-            DataType dataType = (DataType)Lua.PushStack(this);
+            DataType dataType = (DataType)Lua.PushStack(instance, this);
             switch (dataType)
             {
                 case DataType.Number:
-                    return (float)Lua.PopNumber();
+                    return (float)Lua.PopNumber(instance);
                 case DataType.String:
                     {
                         float f;
-                        string s = Lua.PopString();
+                        string s = Lua.PopString(instance);
                         if (float.TryParse(s, out f))
                         {
                             return f;
@@ -508,81 +455,80 @@ namespace bLua
                         return null;
                     }
                 case DataType.Boolean:
-                    return Lua.PopBool() ? 1.0f : 0.0f;
+                    return Lua.PopBool(instance) ? 1.0f : 0.0f;
                 default:
-                    Lua.PopStack();
+                    Lua.PopStack(instance);
                     return null;
             }
 
         }
 
-        public float CastToFloat(float defaultValue=0.0f)
+        public float CastToFloat(float _defaultValue = 0.0f)
         {
-            DataType dataType = (DataType)Lua.PushStack(this);
+            DataType dataType = (DataType)Lua.PushStack(instance, this);
 
             switch (dataType)
             {
                 case DataType.Number:
-                    return (float)Lua.PopNumber();
+                    return (float)Lua.PopNumber(instance);
                 case DataType.String:
                     {
                         float f;
-                        string s = Lua.PopString();
+                        string s = Lua.PopString(instance);
                         if (float.TryParse(s, out f))
                         {
                             return f;
                         }
 
-                        return defaultValue;
+                        return _defaultValue;
                     }
                 case DataType.Boolean:
-                    return Lua.PopBool() ? 1.0f : 0.0f;
+                    return Lua.PopBool(instance) ? 1.0f : 0.0f;
                 default:
-                    Lua.PopStack();
-                    return defaultValue;
+                    Lua.PopStack(instance);
+                    return _defaultValue;
             }
         }
 
-        public int CastToInt(int defaultValue = 0)
+        public int CastToInt(int _defaultValue = 0)
         {
-            DataType dataType = (DataType)Lua.PushStack(this);
+            DataType dataType = (DataType)Lua.PushStack(instance, this);
 
             switch (dataType)
             {
                 case DataType.Number:
-                    return (int)Lua.PopNumber();
+                    return (int)Lua.PopNumber(instance);
                 case DataType.String:
                     {
                         int f;
-                        string s = Lua.PopString();
+                        string s = Lua.PopString(instance);
                         if (int.TryParse(s, out f))
                         {
                             return f;
                         }
 
-                        return defaultValue;
+                        return _defaultValue;
                     }
                 case DataType.Boolean:
-                    return Lua.PopBool() ? 1 : 0;
+                    return Lua.PopBool(instance) ? 1 : 0;
                 default:
-                    Lua.PopStack();
-                    return defaultValue;
+                    Lua.PopStack(instance);
+                    return _defaultValue;
             }
         }
 
-
         public double? CastToNumber()
         {
-            DataType dataType = (DataType)Lua.PushStack(this);
+            DataType dataType = (DataType)Lua.PushStack(instance, this);
 
             switch (dataType)
             {
                 case DataType.Number:
-                    return Lua.PopNumber();
+                    return Lua.PopNumber(instance);
                 case DataType.String:
                     {
                         double f;
-                        string s = Lua.PopString();
+                        string s = Lua.PopString(instance);
                         if (double.TryParse(s, out f))
                         {
                             return f;
@@ -591,22 +537,22 @@ namespace bLua
                         return 0.0;
                     }
                 case DataType.Boolean:
-                    return Lua.PopBool() ? 1.0 : 0.0;
+                    return Lua.PopBool(instance) ? 1.0 : 0.0;
                 case DataType.Nil:
-                    Lua.PopStack();
+                    Lua.PopStack(instance);
                     return null;
                 default:
-                    Lua.PopStack();
+                    Lua.PopStack(instance);
                     return null;
             }
         }
 
-        public T CheckUserDataType<T>(string str) where T : class
+        public T CheckUserDataType<T>(string _string) where T : class
         {
             T result = Object as T;
             if (result == null)
             {
-                Debug.Log($"Could not convert to lua value to type: {str}");
+                Debug.Log($"Could not convert to lua value to type: {_string}");
             }
 
             return result;
@@ -617,24 +563,29 @@ namespace bLua
             return (T)Object;
         }
 
-        public object ToObject(System.Type t)
+        public object ToObject(Type _type)
         {
-            if (t == typeof(double))
+            if (_type == typeof(double))
             {
                 return CastToNumber();
-            } else if (t == typeof(float))
+            }
+            else if (_type == typeof(float))
             {
                 return CastToFloat();
-            } else if (t == typeof(int))
+            }
+            else if (_type == typeof(int))
             {
                 return (int)CastToNumber();
-            } else if (t == typeof(bool))
+            }
+            else if (_type == typeof(bool))
             {
                 return CastToBool();
-            } else if (t == typeof(string))
+            }
+            else if (_type == typeof(string))
             {
                 return CastToString();
-            } else
+            }
+            else
             {
                 return null;
             }
@@ -663,79 +614,83 @@ namespace bLua
 
         public bLuaValue Call(params object[] args)
         {
-            return bLua.Call(this, args);
+            if (instance != null)
+            {
+                return instance.Call(this, args);
+            }
+            return null;
         }
 
-        //table operations.
         public int Length
         {
             get
             {
-                return Lua.Length(this);
+                return Lua.Length(instance, this);
             }
         }
 
-        public bLuaValue this[int n] {
+        public bLuaValue this[int n]
+        {
             get
             {
-                return Lua.Index(this, n+1);
+                return Lua.Index(instance, this, n + 1);
             }
         }
 
         public bLuaValue GetNonRaw(string key)
         {
-            return Lua.GetTable(this, key);
+            return Lua.GetTable(instance, this, key);
         }
 
         public bLuaValue GetNonRaw(object key)
         {
-            return Lua.GetTable(this, key);
+            return Lua.GetTable(instance, this, key);
         }
 
         //synonyms with RawGet
         public bLuaValue Get(string key)
         {
-            return Lua.RawGetTable(this, key);
+            return Lua.RawGetTable(instance, this, key);
         }
 
         public bLuaValue Get(object key)
         {
-            return Lua.RawGetTable(this, key);
+            return Lua.RawGetTable(instance, this, key);
         }
 
         public bLuaValue RawGet(object key)
         {
-            return Lua.RawGetTable(this, key);
+            return Lua.RawGetTable(instance, this, key);
         }
 
         public bLuaValue RawGet(string key)
         {
-            return Lua.RawGetTable(this, key);
+            return Lua.RawGetTable(instance, this, key);
         }
 
         public void Set(bLuaValue key, bLuaValue val)
         {
-            Lua.SetTable(this, key, val);
+            Lua.SetTable(instance, this, key, val);
         }
 
         public void Set(string key, bLuaValue val)
         {
-            Lua.SetTable(this, key, val);
+            Lua.SetTable(instance, this, key, val);
         }
 
         public void Set(string key, object val)
         {
-            Lua.SetTable(this, key, val);
+            Lua.SetTable(instance, this, key, val);
         }
 
         public void Set(object key, object val)
         {
-            Lua.SetTable(this, key, val);
+            Lua.SetTable(instance, this, key, val);
         }
 
         public void Remove(object key)
         {
-            Lua.SetTable(this, key, Nil);
+            Lua.SetTable(instance, this, key, Nil);
         }
 
         public List<bLuaValue> List()
@@ -746,14 +701,14 @@ namespace bLua
             }
 
 #if UNITY_EDITOR
-            int nstack = LuaLibAPI.lua_gettop(bLua._state);
+            int nstack = LuaLibAPI.lua_gettop(instance.handle.state);
 #endif
 
-            Lua.PushStack(this);
-            var result = Lua.PopList();
+            Lua.PushStack(instance, this);
+            var result = Lua.PopList(instance);
 
 #if UNITY_EDITOR
-            Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(bLua._state));
+            Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(instance.handle.state));
 #endif
 
             return result;
@@ -767,29 +722,29 @@ namespace bLua
             }
 
 #if UNITY_EDITOR
-            int nstack = LuaLibAPI.lua_gettop(bLua._state);
+            int nstack = LuaLibAPI.lua_gettop(instance.handle.state);
 #endif
 
-            Lua.PushStack(this);
-            var result = Lua.PopListOfStrings();
+            Lua.PushStack(instance, this);
+            var result = Lua.PopListOfStrings(instance);
 #if UNITY_EDITOR
-            Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(bLua._state));
+            Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(instance.handle.state));
 #endif
 
             return result;
         }
 
-        public Dictionary<string,bLuaValue> Dict()
+        public Dictionary<string, bLuaValue> Dict()
         {
 #if UNITY_EDITOR
-            int nstack = LuaLibAPI.lua_gettop(bLua._state);
+            int nstack = LuaLibAPI.lua_gettop(instance.handle.state);
 #endif
 
-            Lua.PushStack(this);
-            var result = Lua.PopDict();
+            Lua.PushStack(instance, this);
+            var result = Lua.PopDict(instance);
 
 #if UNITY_EDITOR
-            Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(bLua._state));
+            Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(instance.handle.state));
 #endif
 
             return result;
@@ -804,16 +759,15 @@ namespace bLua
         public List<Pair> Pairs()
         {
 #if UNITY_EDITOR
-            int nstack = LuaLibAPI.lua_gettop(bLua._state);
+            int nstack = LuaLibAPI.lua_gettop(instance.handle.state);
 #endif
 
-            Lua.PushStack(this);
-            var result = Lua.PopFullDict();
+            Lua.PushStack(instance, this);
+            var result = Lua.PopFullDict(instance);
 
 #if UNITY_EDITOR
-            Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(bLua._state));
+            Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(instance.handle.state));
 #endif
-
 
             return result;
         }
@@ -823,7 +777,7 @@ namespace bLua
             get
             {
 #if UNITY_EDITOR
-                int nstack = LuaLibAPI.lua_gettop(bLua._state);
+                int nstack = LuaLibAPI.lua_gettop(instance.handle.state);
 #endif
 
                 var result = Pairs();
@@ -834,13 +788,12 @@ namespace bLua
                 }
 
 #if UNITY_EDITOR
-                Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(bLua._state));
+                Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(instance.handle.state));
 #endif
 
                 return values;
             }
         }
-
 
         public List<bLuaValue> Values
         {
@@ -856,23 +809,19 @@ namespace bLua
             }
         }
 
-        //needed?
-        public void CollectDeadKeys()
-        { }
-
         public bool TableEmpty
         {
             get
             {
 #if UNITY_EDITOR
-                int nstack = LuaLibAPI.lua_gettop(bLua._state);
+                int nstack = LuaLibAPI.lua_gettop(instance.handle.state);
 #endif
 
-                Lua.PushStack(this);
-                var result = Lua.PopTableEmpty();
+                Lua.PushStack(instance, this);
+                var result = Lua.PopTableEmpty(instance);
 
 #if UNITY_EDITOR
-                Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(bLua._state));
+                Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(instance.handle.state));
 #endif
 
                 return result;
@@ -884,19 +833,19 @@ namespace bLua
         {
             get
             {
-                Lua.PushStack(this);
-                return !Lua.PopTableHasNonInts();
+                Lua.PushStack(instance, this);
+                return !Lua.PopTableHasNonInts(instance);
             }
         }
 
         public void Append(bLuaValue val)
         {
-            Lua.AppendArray(this, val);
+            Lua.AppendArray(instance, this, val);
         }
 
         public void Append(object val)
         {
-            Lua.AppendArray(this, val);
+            Lua.AppendArray(instance, this, val);
         }
 
         public static void RunDispose(List<bLuaValue> list)
@@ -907,8 +856,7 @@ namespace bLua
             }
         }
 
-
-        public static void RunDispose(Dictionary<string,bLuaValue> dict)
+        public static void RunDispose(Dictionary<string, bLuaValue> dict)
         {
             foreach (var item in dict)
             {
@@ -924,20 +872,27 @@ namespace bLua
                 return false;
             }
 
-#if UNITY_EDITOR
-            int nstack = LuaLibAPI.lua_gettop(bLua._state);
-#endif
-
-            Lua.PushStack(this);
-            Lua.PushStack(other);
-
-            int res = LuaLibAPI.lua_rawequal(bLua._state, -1, -2);
-            Lua.LuaPop(bLua._state, 2);
+            if ((this.instance != other.instance)
+                || this.instance == null
+                || other.instance == null)
+            {
+                // unable to do a raw equality check via lua if the values exist in different lua instances
+                return false;
+            }
 
 #if UNITY_EDITOR
-            Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(bLua._state));
+            int nstack = LuaLibAPI.lua_gettop(instance.handle.state);
 #endif
 
+            Lua.PushStack(instance, this);
+            Lua.PushStack(instance, other);
+
+            int res = LuaLibAPI.lua_rawequal(instance.handle.state, -1, -2);
+            Lua.LuaPop(instance.handle.state, 2);
+
+#if UNITY_EDITOR
+            Assert.AreEqual(nstack, LuaLibAPI.lua_gettop(instance.handle.state));
+#endif
 
             return res != 0;
         }

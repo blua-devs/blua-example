@@ -34,25 +34,35 @@ public class bLuaBenchmark : Benchmark
     protected override void Init()
     {
         identifier = "bLua";
-
-        bLua.bLua.Init();
     }
 
 
     protected override object GetScript()
     {
-        return null;
+        return new bLuaInstance(new bLuaSettings()
+            {
+                sandbox = Sandbox.AllFeatures,
+                sceneChangedBehaviour = bLuaSettings.SceneChangedBehaviour.DeInit
+            });
     }
 
     protected override object RegisterUserData(object script)
     {
-        bLuaUserData.Register(typeof(BenchmarkUserData));
-        bLua.bLua.SetGlobal("UserData", bLuaValue.CreateUserData(new BenchmarkUserData()));
-        return script;
+        bLuaInstance instance = script as bLuaInstance;
+        if (instance != null)
+        {
+            bLuaUserData.Register(instance, typeof(BenchmarkUserData));
+            instance.SetGlobal("UserData", bLuaValue.CreateUserData(instance, new BenchmarkUserData()));
+        }
+        return instance;
     }
 
     protected override void RunBenchmark(object script, string lua)
     {
-        bLua.bLua.ExecBuffer("benchmark", lua);
+        bLuaInstance instance = script as bLuaInstance;
+        if (instance != null)
+        {
+            instance.DoString(lua);
+        }
     }
 }

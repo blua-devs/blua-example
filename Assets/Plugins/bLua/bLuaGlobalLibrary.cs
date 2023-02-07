@@ -44,10 +44,5 @@ public class bLuaGlobalLibrary
 
         OnLog.Invoke(_string);
     }
-
-    public static void spawn(bLuaValue _function)
-    {
-        bLua.bLua.CallCoroutine(_function);
-    }
     #endregion // Methods
 }

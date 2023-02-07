@@ -8,6 +8,80 @@ using bLua;
 using UnityEditor;
 #endif
 
+[bLuaUserData]
+public class TestUserDataClass
+{
+    public int n = 4;
+    public int MyFunction(int x = 5)
+    {
+        return n + x;
+    }
+
+    //see if creating one and returning it by class works.
+    public static TestUserDataClass Create(int x)
+    {
+        return new TestUserDataClass()
+        {
+            n = x,
+        };
+    }
+
+    public string AddStrings(bLuaValue a, string b)
+    {
+        return a.String + b;
+    }
+
+    public int VarArgsFunction(int a, params object[] b)
+    {
+        int result = a;
+        foreach (var v in b)
+        {
+            result += (int)(double)v;
+        }
+        return result;
+    }
+
+    public int VarArgsParamsFunction(int a, params object[] b)
+    {
+        Debug.Log($"VarArgs: {b.Length}");
+        foreach (var v in b)
+        {
+            Debug.Log($"VarArgs: Type {v.GetType().Name}");
+        }
+
+        return 0;
+    }
+
+    public static int StaticFunction(bLuaValue a, int b = 2, int c = 2)
+    {
+        return a.Integer + b + c;
+    }
+
+    public int propertyTest
+    {
+        get
+        {
+            return n + 8;
+        }
+        set
+        {
+            n = value - 8;
+        }
+    }
+}
+
+[bLuaUserData]
+public class TestUserDataClassDerived : TestUserDataClass
+{
+    public int x
+    {
+        get
+        {
+            return 9;
+        }
+    }
+}
+
 #if UNITY_EDITOR
 [CustomEditor(typeof(UnitTests))]
 public class UnitTestsEditor : Editor
@@ -77,13 +151,19 @@ public class UnitTests : MonoBehaviour
         GUI.Label(new Rect(20, 130, 260, 20), "Press 3 to run Thread Macros");
     }
 
+    static bLuaInstance unitInstance;
     public void RunUnitTests()
     {
-        bLua.bLua.Init();
+        bLuaInstance instance = new bLuaInstance(new bLuaSettings()
+            {
+                sandbox = Sandbox.AllFeatures,
+                sceneChangedBehaviour = bLuaSettings.SceneChangedBehaviour.DeInit
+            });
+        unitInstance = instance;
 
-        int stackSize = bLua.NativeLua.LuaLibAPI.lua_gettop(bLua.bLua._state);
+        int stackSize = bLua.NativeLua.LuaLibAPI.lua_gettop(instance.handle.state);
 
-        bLua.bLua.ExecBuffer("main",
+        instance.ExecBuffer("main",
             @"blua.print('Starting Unit Tests')
 
             MyFunctions = {}
@@ -147,160 +227,155 @@ public class UnitTests : MonoBehaviour
                 return x.Create(n).n
             end");
 
-        using (bLuaValue fn = bLua.bLua.GetGlobal("myfunction"))
+        using (bLuaValue fn = instance.GetGlobal("myfunction"))
         {
-            var result = bLua.bLua.Call(fn, 8);
+            var result = instance.Call(fn, 8);
             Assert.AreEqual(result.Number, 13.0);
         }
 
-        using (bLuaValue fn = bLua.bLua.FullLookup(bLua.bLua.GetGlobal("MyFunctions"), "blah"))
+        using (bLuaValue fn = instance.FullLookup(instance.GetGlobal("MyFunctions"), "blah"))
         {
-            Assert.AreEqual(bLua.bLua.Call(fn, 12).Number, 12.0);
+            Assert.AreEqual(instance.Call(fn, 12).Number, 12.0);
 
-            Assert.AreEqual(bLua.NativeLua.LuaLibAPI.lua_gettop(bLua.bLua._state), stackSize);
+            Assert.AreEqual(bLua.NativeLua.LuaLibAPI.lua_gettop(instance.handle.state), stackSize);
         }
 
-        using (bLuaValue fn = bLua.bLua.GetGlobal("make_table"))
+        using (bLuaValue fn = instance.GetGlobal("make_table"))
         {
-            bLuaValue t = bLua.bLua.Call(fn);
+            bLuaValue t = instance.Call(fn);
             Dictionary<string, bLuaValue> tab = t.Dict();
             Assert.AreEqual(tab.Count, 3);
             Assert.AreEqual(tab["abc"].Number, 9);
         }
 
-        using (bLuaValue fn = bLua.bLua.GetGlobal("add_from_table"))
+        using (bLuaValue fn = instance.GetGlobal("add_from_table"))
         {
-            bLuaValue v = bLuaValue.CreateTable();
-            v.Set("a", bLuaValue.CreateNumber(4));
-            v.Set("b", bLuaValue.CreateNumber(5));
-            v.Set("c", bLuaValue.CreateNumber(6));
+            bLuaValue v = bLuaValue.CreateTable(instance);
+            v.Set("a", bLuaValue.CreateNumber(instance, 4));
+            v.Set("b", bLuaValue.CreateNumber(instance, 5));
+            v.Set("c", bLuaValue.CreateNumber(instance, 6));
             bLuaValue t = fn.Call(v);
             Assert.AreEqual(t.Number, 15);
         }
 
-        using (bLuaValue fn = bLuaValue.CreateFunction(TestCFunction))
+        using (bLuaValue fn = bLuaValue.CreateFunction(instance, TestCFunction))
         {
             Assert.AreEqual(fn.Call().Number, 5);
         }
 
-        using (bLuaValue fn = bLua.bLua.GetGlobal("test_userdata"))
+        using (bLuaValue fn = instance.GetGlobal("test_userdata"))
         {
-            var userdata = bLuaValue.CreateUserData(new TestUserDataClass() { n = 7 });
+            var userdata = bLuaValue.CreateUserData(instance, new TestUserDataClass() { n = 7 });
             Assert.AreEqual(fn.Call(userdata).Number, 40);
-            using (bLuaValue fn2 = bLua.bLua.GetGlobal("incr_userdata"))
+            using (bLuaValue fn2 = instance.GetGlobal("incr_userdata"))
             {
                 fn2.Call(userdata);
                 Assert.AreEqual(fn.Call(userdata).Number, 42);
             }
         }
 
-        using (bLuaValue fn = bLua.bLua.GetGlobal("test_addstrings"))
+        using (bLuaValue fn = instance.GetGlobal("test_addstrings"))
         {
-            var userdata = bLuaValue.CreateUserData(new TestUserDataClass() { n = 7 });
-            Assert.AreEqual(fn.Call(userdata, "abc:", bLuaValue.CreateString("def")).String, "abc:def");
+            var userdata = bLuaValue.CreateUserData(instance, new TestUserDataClass() { n = 7 });
+            Assert.AreEqual(fn.Call(userdata, "abc:", bLuaValue.CreateString(instance, "def")).String, "abc:def");
         }
 
-        using (bLuaValue fn = bLua.bLua.GetGlobal("test_varargs"))
+        using (bLuaValue fn = instance.GetGlobal("test_varargs"))
         {
-            var userdata = bLuaValue.CreateUserData(new TestUserDataClass() { n = 7 });
+            var userdata = bLuaValue.CreateUserData(instance, new TestUserDataClass() { n = 7 });
             Assert.AreEqual(fn.Call(userdata).Number, 20);
         }
 
 
-        using (bLuaValue fn = bLua.bLua.GetGlobal("test_field"))
+        using (bLuaValue fn = instance.GetGlobal("test_field"))
         {
-            var userdata = bLuaValue.CreateUserData(new TestUserDataClass() { n = 7 });
+            var userdata = bLuaValue.CreateUserData(instance, new TestUserDataClass() { n = 7 });
             Assert.AreEqual(fn.Call(userdata).Number, 9.0);
         }
 
-        using (bLuaValue fn = bLua.bLua.GetGlobal("test_field"))
+        using (bLuaValue fn = instance.GetGlobal("test_field"))
         {
-            var userdata = bLuaValue.CreateUserData(new TestUserDataClassDerived() { n = 7 });
+            var userdata = bLuaValue.CreateUserData(instance, new TestUserDataClassDerived() { n = 7 });
             Assert.AreEqual(fn.Call(userdata).Number, 9.0);
         }
 
-        using (bLuaValue fn = bLua.bLua.GetGlobal("test_classproperty"))
+        using (bLuaValue fn = instance.GetGlobal("test_classproperty"))
         {
-            var userdata = bLuaValue.CreateUserData(new TestUserDataClassDerived() { n = 7 });
+            var userdata = bLuaValue.CreateUserData(instance, new TestUserDataClassDerived() { n = 7 });
             Assert.AreEqual(fn.Call(userdata, 7.0).Number, 7.0);
         }
 
         Debug.Log("Finished Unit Tests");
 
-        Assert.AreEqual(bLua.NativeLua.LuaLibAPI.lua_gettop(bLua.bLua._state), stackSize);
+        Assert.AreEqual(bLua.NativeLua.LuaLibAPI.lua_gettop(instance.handle.state), stackSize);
+
+        instance.Dispose();
     }
 
     public void RunTestCoroutine()
     {
         Debug.Log("Starting Test Coroutine");
 
-        bLua.bLua.Init();
-
-        if (Feature.Coroutines.Enabled())
+        bLuaInstance instance = new bLuaInstance(new bLuaSettings()
         {
-            bLua.bLua.ExecBuffer("co",
-                @"blua.print('Started Test Coroutine')
+            sandbox = Sandbox.AllFeatures,
+            sceneChangedBehaviour = bLuaSettings.SceneChangedBehaviour.DeInit
+        });
 
-                function testYield(x)
-                    for i=1,x do
-                        blua.print('co: ' .. i)
-                        coroutine.yield()
-                    end
+        instance.ExecBuffer("co",
+            @"blua.print('Started Test Coroutine')
 
-                    blua.print('Finished Test Coroutine')
-                end");
-            using (bLuaValue fn = bLua.bLua.GetGlobal("testYield"))
-            {
-                bLua.bLua.CallCoroutine(fn, 5);
-            }
-        }
-        else
+            function testYield(x)
+                for i=1,x do
+                    blua.print('co: ' .. i)
+                    coroutine.yield()
+                end
+
+                blua.print('Finished Test Coroutine')
+            end");
+        using (bLuaValue fn = instance.GetGlobal("testYield"))
         {
-            Debug.Log("Did not test coroutines because the " + Feature.Coroutines.ToString() + " feature was not enabled.");
+            instance.CallCoroutine(fn, 5);
         }
     }
 
     public void RunThreadMacros()
     {
-        bLua.bLua.Init();
-
-        if (Feature.Coroutines.Enabled()
-            && Feature.ThreadMacros.Enabled())
+        bLuaInstance instance = new bLuaInstance(new bLuaSettings()
         {
-            bLua.bLua.ExecBuffer("test_macros",
-                @"blua.print('Starting Thread Macros')
+            sandbox = Sandbox.AllFeatures,
+            sceneChangedBehaviour = bLuaSettings.SceneChangedBehaviour.DeInit
+        });
 
-                function testMacros(x)
-                    blua.print('I print first')
-                    delay(2, function()
-                        blua.print('I print third')
-                    end)
-                    spawn(function()
-                        printStringAfter('I print second', 1)
-                    end)
-                    wait(x)
-                    blua.print('I print last')
-                    blua.print('Finished Thread Macros')
-                end
+        instance.ExecBuffer("test_macros",
+            @"blua.print('Starting Thread Macros')
 
-                function printStringAfter(s, t)
-                    wait(t)
-                    blua.print(s)
-                end");
-            using (bLuaValue fn = bLua.bLua.GetGlobal("testMacros"))
-            {
-                bLua.bLua.CallCoroutine(fn, 3);
-            }
-        }
-        else
+            function testMacros(x)
+                blua.print('I print first')
+                delay(2, function()
+                    blua.print('I print third')
+                end)
+                spawn(function()
+                    printStringAfter('I print second', 1)
+                end)
+                wait(x)
+                blua.print('I print last')
+                blua.print('Finished Thread Macros')
+            end
+
+            function printStringAfter(s, t)
+                wait(t)
+                blua.print(s)
+            end");
+        using (bLuaValue fn = instance.GetGlobal("testMacros"))
         {
-            Debug.Log("Did not test the wait function because " + Feature.Coroutines.ToString() + " or " + Feature.ThreadMacros.ToString() + " feature(s) was/were not enabled.");
+            instance.CallCoroutine(fn, 3);
         }
     }
 
     public static int TestCFunction(System.IntPtr state)
     {
-        bLua.NativeLua.Lua.PushObjectOntoStack(5);
+        bLua.NativeLua.Lua.PushObjectOntoStack(unitInstance, 5);
         return 1;
     }
 }
