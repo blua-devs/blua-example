@@ -268,11 +268,6 @@ namespace bLua.NativeLua
                     LuaPop(_instance.handle.state, 1);
                     return bLuaValue.Nil;
 
-                case (int)DataType.Boolean:
-                    int val = LuaLibAPI.lua_toboolean(_instance.handle.state, -1);
-                    LuaPop(_instance.handle.state, 1);
-                    return val != 0 ? bLuaValue.True : bLuaValue.False;
-
                 default:
                     //pops the value on top of the stack and makes a reference to it.
                     int refid = LuaXLibAPI.luaL_ref(_instance.handle.state, LUA_REGISTRYINDEX);

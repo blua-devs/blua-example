@@ -32,12 +32,10 @@ namespace bLua
 
         bLuaInstance instance;
 
-        static public bLuaValue True = null;
-        static public bLuaValue False = null;
 
         static public bLuaValue Nil = new bLuaValue()
         {
-            dataType = DataType.Nil,
+            dataType = DataType.Nil
         };
 
         public static bLuaValue NewNil()
@@ -117,7 +115,8 @@ namespace bLua
 
         public static bLuaValue CreateBool(bLuaInstance _instance, bool _bool)
         {
-            return _bool ? True : False;
+            Lua.PushObjectOntoStack(_instance, _bool);
+            return Lua.PopStackIntoValue(_instance);
         }
 
         public static bLuaValue CreateTable(bLuaInstance _instance, int _reserveArray = 0, int _reserveTable = 0)
@@ -870,6 +869,12 @@ namespace bLua
             if (other == null)
             {
                 return false;
+            }
+
+            if (Type == DataType.Nil
+                && other.Type == DataType.Nil)
+            {
+                return true;
             }
 
             if ((this.instance != other.instance)

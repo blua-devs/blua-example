@@ -227,14 +227,6 @@ namespace bLua
                 return;
             }
 
-            // Initialize true and false
-            LuaLibAPI.lua_pushboolean(handle.state, 1);
-            int refid = LuaXLibAPI.luaL_ref(handle.state, Lua.LUA_REGISTRYINDEX); // Pops the value on top of the stack and makes a reference to it.
-            bLuaValue.True = new bLuaValue(null, refid);
-            LuaLibAPI.lua_pushboolean(handle.state, 0);
-            refid = LuaXLibAPI.luaL_ref(handle.state, Lua.LUA_REGISTRYINDEX); // Pops the value on top of the stack and makes a reference to it.
-            bLuaValue.False = new bLuaValue(null, refid);
-
             _gc = bLuaValue.CreateFunction(this, GCFunction);
             // Initialize all bLua User Data
             if (settings.autoRegisterAllUserData)
