@@ -161,7 +161,7 @@ public class UnitTests : MonoBehaviour
 
         Debug.Log("Starting Unit Tests");
 
-        int stackSize = bLua.NativeLua.LuaLibAPI.lua_gettop(instance.handle.state);
+        int stackSize = bLua.NativeLua.LuaLibAPI.lua_gettop(instance.state);
 
         instance.ExecBuffer("unit_tests",
             @"MyFunctions = {}
@@ -235,7 +235,7 @@ public class UnitTests : MonoBehaviour
         {
             Assert.AreEqual(instance.Call(fn, 12).Number, 12.0);
 
-            Assert.AreEqual(bLua.NativeLua.LuaLibAPI.lua_gettop(instance.handle.state), stackSize);
+            Assert.AreEqual(bLua.NativeLua.LuaLibAPI.lua_gettop(instance.state), stackSize);
         }
 
         using (bLuaValue fn = instance.GetGlobal("make_table"))
@@ -302,7 +302,7 @@ public class UnitTests : MonoBehaviour
             Assert.AreEqual(fn.Call(userdata, 7.0).Number, 7.0);
         }
 
-        Assert.AreEqual(bLua.NativeLua.LuaLibAPI.lua_gettop(instance.handle.state), stackSize);
+        Assert.AreEqual(bLua.NativeLua.LuaLibAPI.lua_gettop(instance.state), stackSize);
     }
 
     public void RunTestCoroutine()
@@ -364,7 +364,7 @@ public class UnitTests : MonoBehaviour
 
     public static int TestCFunction(IntPtr state)
     {
-        bLua.NativeLua.Lua.PushObjectOntoStack(LuaHandle.GetHandleFromRegistry(bLua.NativeLua.Lua.GetMainThread(state)).instance, 5);
+        bLua.NativeLua.Lua.PushObjectOntoStack(bLuaInstance.GetInstanceByState(bLua.NativeLua.Lua.GetMainThread(state)), 5);
         return 1;
     }
 }

@@ -129,8 +129,8 @@ namespace bLua
 
         public static object GetUserDataObject(bLuaInstance _instance, int _nstack)
         {
-            LuaLibAPI.lua_checkstack(_instance.handle.state, 1);
-            int ntype = LuaLibAPI.lua_getiuservalue(_instance.handle.state, _nstack, 1);
+            LuaLibAPI.lua_checkstack(_instance.state, 1);
+            int ntype = LuaLibAPI.lua_getiuservalue(_instance.state, _nstack, 1);
             if (ntype != (int)DataType.Number)
             {
                 _instance.Error($"Could not find valid user data object");
@@ -138,7 +138,7 @@ namespace bLua
                 return null;
             }
 
-            int liveObjectIndex = LuaLibAPI.lua_tointegerx(_instance.handle.state, -1, IntPtr.Zero);
+            int liveObjectIndex = LuaLibAPI.lua_tointegerx(_instance.state, -1, IntPtr.Zero);
 
             object obj = _instance.s_liveObjects[liveObjectIndex];
 
@@ -237,11 +237,11 @@ namespace bLua
                 _instance.s_nNextLiveObject++;
             }
 
-            LuaLibAPI.lua_newuserdatauv(_instance.handle.state, new IntPtr(8), 1);
+            LuaLibAPI.lua_newuserdatauv(_instance.state, new IntPtr(8), 1);
             Lua.PushObjectOntoStack(_instance, objIndex);
-            LuaLibAPI.lua_setiuservalue(_instance.handle.state, -2, 1);
+            LuaLibAPI.lua_setiuservalue(_instance.state, -2, 1);
             Lua.PushStack(_instance, entry.metatable);
-            LuaLibAPI.lua_setmetatable(_instance.handle.state, -2);
+            LuaLibAPI.lua_setmetatable(_instance.state, -2);
 
             string msg = Lua.TraceMessage(_instance, "live object");
 

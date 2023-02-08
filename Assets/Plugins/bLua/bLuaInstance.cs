@@ -132,10 +132,24 @@ namespace bLua
 
     public class bLuaInstance : IDisposable
     {
+        static Dictionary<IntPtr, bLuaInstance> instanceRegistry = new Dictionary<IntPtr, bLuaInstance>();
+
+        public static bLuaInstance GetInstanceByState(IntPtr _state)
+        {
+            bLuaInstance instance = null;
+            instanceRegistry.TryGetValue(_state, out instance);
+            return instance;
+        }
+
+        public static int GetInstanceCount()
+        {
+            return instanceRegistry.Count;
+        }
+
         bLuaSettings settings = new bLuaSettings();
 
-        /// <summary> Contains the current Lua handle.state (https://www.lua.org/manual/5.4/manual.html#lua_newhandle.state). </summary>
-        public LuaHandle handle;
+        /// <summary> Contains the current Lua state (https://www.lua.org/manual/5.4/manual.html#lua_newstate). </summary>
+        public IntPtr state { get; private set; }
 
         public int s_stringCacheHit = 0, s_stringCacheMiss = 0;
 
@@ -202,14 +216,6 @@ namespace bLua
         /// <summary> Initialize Lua and handle enabling/disabled features based on the current sandbox. </summary>
         void Init()
         {
-#if UNITY_EDITOR
-            // If we're in edit mode and bLua has already been initialized, reinitialize it in case source code (include User Data) has changed
-            if (!EditorApplication.isPlaying
-                && initialized)
-            {
-                DeInit();
-            }
-#endif
             if (initialized)
             {
                 return;
@@ -219,13 +225,9 @@ namespace bLua
             SceneManager.activeSceneChanged -= OnActiveSceneChanged; // This can be done safely
             SceneManager.activeSceneChanged += OnActiveSceneChanged;
 
-            // Create a new handle.state for Lua
-            handle = new LuaHandle(this);
-            if (handle == null)
-            {
-                Debug.LogError("Created Lua handle was null! Failed to initialize bLua.");
-                return;
-            }
+            // Create a new state for this instance
+            state = LuaXLibAPI.luaL_newstate();
+            instanceRegistry.Add(state, this);
 
             _gc = bLuaValue.CreateFunction(this, GCFunction);
             // Initialize all bLua User Data
@@ -240,13 +242,13 @@ namespace bLua
             #region Feature Handling
             if (FeatureEnabled(Feature.BasicLibrary))
             {
-                LuaLibAPI.luaopen_base(handle.state);
+                LuaLibAPI.luaopen_base(state);
             }
 
             if (FeatureEnabled(Feature.Coroutines))
             {
-                LuaLibAPI.luaopen_coroutine(handle.state);
-                LuaLibAPI.lua_setglobal(handle.state, "coroutine");
+                LuaLibAPI.luaopen_coroutine(state);
+                LuaLibAPI.lua_setglobal(state, "coroutine");
 
                 if (OnTick != null)
                 {
@@ -305,50 +307,50 @@ namespace bLua
 
             if (FeatureEnabled(Feature.Packages))
             {
-                LuaLibAPI.luaopen_package(handle.state);
-                LuaLibAPI.lua_setglobal(handle.state, "package");
+                LuaLibAPI.luaopen_package(state);
+                LuaLibAPI.lua_setglobal(state, "package");
             }
 
             if (FeatureEnabled(Feature.StringManipulation))
             {
-                LuaLibAPI.luaopen_string(handle.state);
-                LuaLibAPI.lua_setglobal(handle.state, "string");
+                LuaLibAPI.luaopen_string(state);
+                LuaLibAPI.lua_setglobal(state, "string");
             }
 
             if (FeatureEnabled(Feature.UTF8Support))
             {
-                LuaLibAPI.luaopen_utf8(handle.state);
-                LuaLibAPI.lua_setglobal(handle.state, "utf8");
+                LuaLibAPI.luaopen_utf8(state);
+                LuaLibAPI.lua_setglobal(state, "utf8");
             }
 
             if (FeatureEnabled(Feature.Tables))
             {
-                LuaLibAPI.luaopen_table(handle.state);
-                LuaLibAPI.lua_setglobal(handle.state, "table");
+                LuaLibAPI.luaopen_table(state);
+                LuaLibAPI.lua_setglobal(state, "table");
             }
 
             if (FeatureEnabled(Feature.MathLibrary))
             {
-                LuaLibAPI.luaopen_math(handle.state);
-                LuaLibAPI.lua_setglobal(handle.state, "math");
+                LuaLibAPI.luaopen_math(state);
+                LuaLibAPI.lua_setglobal(state, "math");
             }
 
             if (FeatureEnabled(Feature.IO))
             {
-                LuaLibAPI.luaopen_io(handle.state);
-                LuaLibAPI.lua_setglobal(handle.state, "io");
+                LuaLibAPI.luaopen_io(state);
+                LuaLibAPI.lua_setglobal(state, "io");
             }
 
             if (FeatureEnabled(Feature.OS))
             {
-                LuaLibAPI.luaopen_os(handle.state);
-                LuaLibAPI.lua_setglobal(handle.state, "os");
+                LuaLibAPI.luaopen_os(state);
+                LuaLibAPI.lua_setglobal(state, "os");
             }
 
             if (FeatureEnabled(Feature.Debug))
             {
-                LuaLibAPI.luaopen_debug(handle.state);
-                LuaLibAPI.lua_setglobal(handle.state, "debug");
+                LuaLibAPI.luaopen_debug(state);
+                LuaLibAPI.lua_setglobal(state, "debug");
             }
 
             if (FeatureEnabled(Feature.ThreadMacros))
@@ -395,7 +397,12 @@ namespace bLua
             OnTick.RemoveAllListeners();
             StopTicking();
 
-            handle.Dispose();
+            instanceRegistry.Remove(state);
+            if (state != IntPtr.Zero)
+            {
+                LuaLibAPI.lua_close(state); // Closes the current Lua environment and releases all objects, threads, and dynamic memory
+            }
+            state = IntPtr.Zero;
 
             initialized = false;
 
@@ -534,8 +541,8 @@ namespace bLua
         {
             get
             {
-                LuaLibAPI.lua_getglobal(handle.state, "builtin_coroutines");
-                int len = (int)LuaLibAPI.lua_rawlen(handle.state, -1);
+                LuaLibAPI.lua_getglobal(state, "builtin_coroutines");
+                int len = (int)LuaLibAPI.lua_rawlen(state, -1);
                 Lua.PopStack(this);
                 return len;
             }
@@ -562,7 +569,7 @@ namespace bLua
         #region Globals
         public bLuaValue GetGlobal(string _key)
         {
-            int resType = LuaLibAPI.lua_getglobal(handle.state, _key);
+            int resType = LuaLibAPI.lua_getglobal(state, _key);
             var result = Lua.PopStackIntoValue(this);
             result.dataType = (DataType)resType;
             return result;
@@ -571,7 +578,7 @@ namespace bLua
         public void SetGlobal(string _key, bLuaValue _value)
         {
             Lua.PushStack(this, _value);
-            LuaLibAPI.lua_setglobal(handle.state, _key);
+            LuaLibAPI.lua_setglobal(state, _key);
         }
         #endregion // Globals
 
@@ -630,23 +637,23 @@ namespace bLua
         {
             using (Lua.s_profileLuaCall.Auto())
             {
-                int result = LuaXLibAPI.luaL_loadbufferx(handle.state, _text, (ulong)_text.Length, _name, null);
+                int result = LuaXLibAPI.luaL_loadbufferx(state, _text, (ulong)_text.Length, _name, null);
                 if (result != 0)
                 {
-                    string msg = Lua.GetString(handle.state, -1);
-                    Lua.LuaPop(handle.state, 1);
+                    string msg = Lua.GetString(state, -1);
+                    Lua.LuaPop(state, 1);
                     throw new LuaException(msg);
                 }
 
                 using (Lua.s_profileLuaCallInner.Auto())
                 {
-                    result = LuaLibAPI.lua_pcallk(handle.state, 0, _nresults, 0, 0, IntPtr.Zero);
+                    result = LuaLibAPI.lua_pcallk(state, 0, _nresults, 0, 0, IntPtr.Zero);
                 }
 
                 if (result != 0)
                 {
-                    string msg = Lua.GetString(handle.state, -1);
-                    Lua.LuaPop(handle.state, 1);
+                    string msg = Lua.GetString(state, -1);
+                    Lua.LuaPop(state, 1);
                     throw new LuaException(msg);
                 }
             }
@@ -671,12 +678,12 @@ namespace bLua
                 //TODO set the error handler to get the stack trace.
                 using (Lua.s_profileLuaCallInner.Auto())
                 {
-                    result = LuaLibAPI.lua_pcallk(handle.state, _args.Length, 1, 0, 0L, IntPtr.Zero);
+                    result = LuaLibAPI.lua_pcallk(state, _args.Length, 1, 0, 0L, IntPtr.Zero);
                 }
                 if (result != 0)
                 {
-                    string error = Lua.GetString(handle.state, -1);
-                    Lua.LuaPop(handle.state, 1);
+                    string error = Lua.GetString(state, -1);
+                    Lua.LuaPop(state, 1);
                     Error($"Error in function call: {error}");
                     throw new LuaException(error);
                 }
@@ -720,13 +727,13 @@ namespace bLua
         public static int CallFunction(IntPtr _state)
         {
             IntPtr mainThreadState = Lua.GetMainThread(_state);
-            bLuaInstance mainThreadInstance = LuaHandle.GetHandleFromRegistry(mainThreadState).instance;
+            bLuaInstance mainThreadInstance = GetInstanceByState(mainThreadState);
 
-            var stateBack = mainThreadInstance.handle.state;
-            mainThreadInstance.handle.SetState(_state);
-
+            var stateBack = mainThreadInstance.state;
             try
             {
+                mainThreadInstance.state = _state;
+
                 int stackSize = LuaLibAPI.lua_gettop(_state);
                 if (stackSize == 0 || LuaLibAPI.lua_type(_state, 1) != (int)DataType.UserData)
                 {
@@ -836,20 +843,20 @@ namespace bLua
             }
             finally
             {
-                mainThreadInstance.handle.SetState(stateBack);
+                mainThreadInstance.state = stateBack;
             }
         }
 
         public static int CallStaticFunction(IntPtr _state)
         {
             IntPtr mainThreadState = Lua.GetMainThread(_state);
-            bLuaInstance mainThreadInstance = LuaHandle.GetHandleFromRegistry(mainThreadState).instance;
+            bLuaInstance mainThreadInstance = GetInstanceByState(mainThreadState);
 
-            var stateBack = mainThreadInstance.handle.state;
-            mainThreadInstance.handle.SetState(_state);
-
+            var stateBack = mainThreadInstance.state;
             try
             {
+                mainThreadInstance.state = _state;
+
                 int n = LuaLibAPI.lua_tointegerx(_state, Lua.UpValueIndex(1), IntPtr.Zero);
                 MethodCallInfo info = mainThreadInstance.s_methods[n];
 
@@ -921,19 +928,19 @@ namespace bLua
             }
             finally
             {
-                mainThreadInstance.handle.SetState(stateBack);
+                mainThreadInstance.state = stateBack;
             }
         }
 
         public static int IndexFunction(IntPtr _state)
         {
             IntPtr mainThreadState = Lua.GetMainThread(_state);
-            bLuaInstance mainThreadInstance = LuaHandle.GetHandleFromRegistry(mainThreadState).instance;
+            bLuaInstance mainThreadInstance = GetInstanceByState(mainThreadState);
 
-            var stateBack = mainThreadInstance.handle.state;
+            var stateBack = mainThreadInstance.state;
             try
             {
-                mainThreadInstance.handle.SetState(_state);
+                mainThreadInstance.state = _state;
 
                 int n = LuaLibAPI.lua_tointegerx(_state, Lua.UpValueIndex(1), IntPtr.Zero);
 
@@ -1002,20 +1009,20 @@ namespace bLua
             }
             finally
             {
-                mainThreadInstance.handle.SetState(stateBack);
+                mainThreadInstance.state = stateBack;
             }
         }
 
         public static int SetIndexFunction(IntPtr _state)
         {
             IntPtr mainThreadState = Lua.GetMainThread(_state);
-            bLuaInstance mainThreadInstance = LuaHandle.GetHandleFromRegistry(mainThreadState).instance;
+            bLuaInstance mainThreadInstance = GetInstanceByState(mainThreadState);
 
-            var stateBack = mainThreadInstance.handle.state;
-            mainThreadInstance.handle.SetState(_state);
-
+            var stateBack = mainThreadInstance.state;
             try
             {
+                mainThreadInstance.state = _state;
+
                 int n = LuaLibAPI.lua_tointegerx(_state, Lua.UpValueIndex(1), IntPtr.Zero);
 
                 if (n < 0 || n >= mainThreadInstance.s_entries.Count)
@@ -1070,7 +1077,7 @@ namespace bLua
             }
             finally
             {
-                mainThreadInstance.handle.SetState(stateBack);
+                mainThreadInstance.state = stateBack;
             }
         }
 
@@ -1082,18 +1089,16 @@ namespace bLua
             }
 
             IntPtr mainThreadState = Lua.GetMainThread(_state);
-            LuaHandle mainThreadHandle = LuaHandle.GetHandleFromRegistry(mainThreadState);
-            
-            if (mainThreadHandle == null)
+            bLuaInstance mainThreadInstance = GetInstanceByState(mainThreadState);
+
+            if (mainThreadInstance == null)
             {
                 return 0;
             }
 
-            bLuaInstance mainThreadInstance = mainThreadHandle.instance;
-
             LuaLibAPI.lua_checkstack(_state, 1);
             LuaLibAPI.lua_getiuservalue(_state, 1, 1);
-            int n = LuaLibAPI.lua_tointegerx(mainThreadInstance.handle.state, -1, IntPtr.Zero);
+            int n = LuaLibAPI.lua_tointegerx(mainThreadInstance.state, -1, IntPtr.Zero);
             mainThreadInstance.s_liveObjects[n] = null;
             mainThreadInstance.s_liveObjectsFreeList.Add(n);
 

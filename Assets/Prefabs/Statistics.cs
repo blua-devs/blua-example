@@ -21,7 +21,7 @@ public class Statistics : MonoBehaviour
 
     List<StatisticsRow> rows = new List<StatisticsRow>()
     {
-        new StatisticsRow(() => "Instance Count: " + LuaHandle.GetHandleCount().ToString())
+        new StatisticsRow(() => "Instance Count: " + bLuaInstance.GetInstanceCount().ToString())
     };
 
     public static Statistics instance;
