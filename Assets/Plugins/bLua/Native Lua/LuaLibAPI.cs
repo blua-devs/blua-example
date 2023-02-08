@@ -84,6 +84,9 @@ namespace bLua.NativeLua
         [DllImport(Lua.dllName)]
         public static extern System.IntPtr lua_tolstring(System.IntPtr state, int n, StrLen /*|size_t*|*/ len);
 
+        [DllImport(Lua.dllName)]
+        public static extern System.IntPtr lua_tothread(System.IntPtr state, int n);
+
         //void lua_pushcclosure (lua_State* L, lua_CFunction fn, int n);
         [DllImport(Lua.dllName)]
         public static extern void lua_pushcclosure(System.IntPtr state, System.IntPtr fn, int n);

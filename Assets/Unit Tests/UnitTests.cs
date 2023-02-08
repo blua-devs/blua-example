@@ -163,7 +163,7 @@ public class UnitTests : MonoBehaviour
 
         int stackSize = bLua.NativeLua.LuaLibAPI.lua_gettop(instance.handle.state);
 
-        instance.ExecBuffer("main",
+        instance.ExecBuffer("unit_tests",
             @"blua.print('Starting Unit Tests')
 
             MyFunctions = {}
@@ -308,8 +308,6 @@ public class UnitTests : MonoBehaviour
         Debug.Log("Finished Unit Tests");
 
         Assert.AreEqual(bLua.NativeLua.LuaLibAPI.lua_gettop(instance.handle.state), stackSize);
-
-        instance.Dispose();
     }
 
     public void RunTestCoroutine()
@@ -322,12 +320,12 @@ public class UnitTests : MonoBehaviour
             sceneChangedBehaviour = bLuaSettings.SceneChangedBehaviour.DeInit
         });
 
-        instance.ExecBuffer("co",
+        instance.ExecBuffer("test_coroutine",
             @"blua.print('Started Test Coroutine')
 
             function testYield(x)
                 for i=1,x do
-                    blua.print('co: ' .. i)
+                    blua.print('test coroutine ' .. i)
                     coroutine.yield()
                 end
 

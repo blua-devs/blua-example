@@ -13,10 +13,7 @@ public sealed class LuaHandle : IDisposable
     public static LuaHandle GetHandleFromRegistry(IntPtr _state)
     {
         LuaHandle handle = null;
-        if (!handleRegistry.TryGetValue(_state, out handle))
-        {
-            Debug.LogError("Failed to get lua handle (" + _state + ") from registry!");
-        }
+        handleRegistry.TryGetValue(_state, out handle);
         return handle;
     }
 
@@ -32,7 +29,6 @@ public sealed class LuaHandle : IDisposable
         instance = _instance;
         m_handle = LuaXLibAPI.luaL_newstate();
         handleRegistry.Add(m_handle, this);
-        Debug.Log("added " + m_handle.ToString());
     }
     
     public void SetState(IntPtr _state)
@@ -43,7 +39,6 @@ public sealed class LuaHandle : IDisposable
     public void Dispose()
     {
         handleRegistry.Remove(m_handle);
-        Debug.Log("removed " + m_handle.ToString());
 
         if (m_handle != IntPtr.Zero)
         {

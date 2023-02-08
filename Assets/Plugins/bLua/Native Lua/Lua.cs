@@ -39,6 +39,10 @@ namespace bLua.NativeLua
         public static int LUAI_MAXSTACK = 1000000;
         public static int LUA_REGISTRYINDEX = (-LUAI_MAXSTACK - 1000);
 
+        public static int LUA_RIDX_MAINTHREAD = 1;
+        public static int LUA_RIDX_GLOBALS = 2;
+        public static int LUA_RIDX_LAST = LUA_RIDX_GLOBALS;
+
         public static ProfilerMarker s_profileLuaGC = new ProfilerMarker("Lua.GC");
         public static ProfilerMarker s_profileLuaCo = new ProfilerMarker("Lua.Coroutine");
         public static ProfilerMarker s_profileLuaCall = new ProfilerMarker("Lua.Call");
@@ -48,6 +52,14 @@ namespace bLua.NativeLua
 
 
         #region Miscellaneous
+        public static IntPtr GetMainThread(IntPtr _state)
+        {
+            LuaLibAPI.lua_rawgeti(_state, LUA_REGISTRYINDEX, LUA_RIDX_MAINTHREAD);
+            IntPtr thread = LuaLibAPI.lua_tothread(_state, -1);
+            LuaPop(_state, 1);
+            return thread;
+        }
+
         public static byte[] StrToUTF8(string _string)
         {
             return System.Text.UTF8Encoding.UTF8.GetBytes(_string);

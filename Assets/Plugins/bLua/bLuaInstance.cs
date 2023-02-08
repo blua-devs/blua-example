@@ -412,11 +412,6 @@ namespace bLua
 
         void DeInit()
         {
-            if (cancelcos != null) // Don't attempt to cancel coroutines if this function is null (likely because coroutines aren't enabled)
-            {
-                Call(cancelcos);
-            }
-
             OnTick.RemoveListener(TickCoroutines);
 
             StopTicking();
@@ -743,7 +738,9 @@ namespace bLua
 
         public static int CallFunction(IntPtr _state)
         {
-            bLuaInstance inst = LuaHandle.GetHandleFromRegistry(_state).instance;
+            IntPtr mainThreadState = Lua.GetMainThread(_state);
+
+            bLuaInstance inst = LuaHandle.GetHandleFromRegistry(mainThreadState).instance;
 
             var stateBack = inst.handle.state;
             inst.handle.SetState(_state);
@@ -865,7 +862,9 @@ namespace bLua
 
         public static int CallStaticFunction(IntPtr _state)
         {
-            bLuaInstance inst = LuaHandle.GetHandleFromRegistry(_state).instance;
+            IntPtr mainThreadState = Lua.GetMainThread(_state);
+
+            bLuaInstance inst = LuaHandle.GetHandleFromRegistry(mainThreadState).instance;
 
             var stateBack = inst.handle.state;
             inst.handle.SetState(_state);
@@ -949,7 +948,9 @@ namespace bLua
 
         public static int IndexFunction(IntPtr _state)
         {
-            bLuaInstance inst = LuaHandle.GetHandleFromRegistry(_state).instance;
+            IntPtr mainThreadState = Lua.GetMainThread(_state);
+
+            bLuaInstance inst = LuaHandle.GetHandleFromRegistry(mainThreadState).instance;
 
             var stateBack = inst.handle.state;
             try
@@ -1029,7 +1030,9 @@ namespace bLua
 
         public static int SetIndexFunction(IntPtr _state)
         {
-            bLuaInstance inst = LuaHandle.GetHandleFromRegistry(_state).instance;
+            IntPtr mainThreadState = Lua.GetMainThread(_state);
+
+            bLuaInstance inst = LuaHandle.GetHandleFromRegistry(mainThreadState).instance;
 
             var stateBack = inst.handle.state;
             inst.handle.SetState(_state);
@@ -1096,7 +1099,9 @@ namespace bLua
 
         public static int GCFunction(IntPtr _state)
         {
-            bLuaInstance inst = LuaHandle.GetHandleFromRegistry(_state).instance;
+            IntPtr mainThreadState = Lua.GetMainThread(_state);
+
+            bLuaInstance inst = LuaHandle.GetHandleFromRegistry(mainThreadState).instance;
 
             LuaLibAPI.lua_checkstack(_state, 1);
             LuaLibAPI.lua_getiuservalue(_state, 1, 1);
