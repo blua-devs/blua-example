@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using UnityEngine.Assertions;
 using UnityEngine;
 using bLua;
+using System;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -151,22 +152,19 @@ public class UnitTests : MonoBehaviour
         GUI.Label(new Rect(20, 130, 260, 20), "Press 3 to run Thread Macros");
     }
 
-    static bLuaInstance unitInstance;
     public void RunUnitTests()
     {
         bLuaInstance instance = new bLuaInstance(new bLuaSettings()
-            {
-                sandbox = Sandbox.AllFeatures,
-                sceneChangedBehaviour = bLuaSettings.SceneChangedBehaviour.DeInit
-            });
-        unitInstance = instance;
+        {
+            sandbox = Sandbox.AllFeatures
+        });
+
+        Debug.Log("Starting Unit Tests");
 
         int stackSize = bLua.NativeLua.LuaLibAPI.lua_gettop(instance.handle.state);
 
         instance.ExecBuffer("unit_tests",
-            @"blua.print('Starting Unit Tests')
-
-            MyFunctions = {}
+            @"MyFunctions = {}
 
             function MyFunctions.blah(y)
                 return y
@@ -286,7 +284,6 @@ public class UnitTests : MonoBehaviour
             Assert.AreEqual(fn.Call(userdata).Number, 20);
         }
 
-
         using (bLuaValue fn = instance.GetGlobal("test_field"))
         {
             var userdata = bLuaValue.CreateUserData(instance, new TestUserDataClass() { n = 7 });
@@ -305,32 +302,26 @@ public class UnitTests : MonoBehaviour
             Assert.AreEqual(fn.Call(userdata, 7.0).Number, 7.0);
         }
 
-        Debug.Log("Finished Unit Tests");
-
         Assert.AreEqual(bLua.NativeLua.LuaLibAPI.lua_gettop(instance.handle.state), stackSize);
     }
 
     public void RunTestCoroutine()
     {
-        Debug.Log("Starting Test Coroutine");
-
         bLuaInstance instance = new bLuaInstance(new bLuaSettings()
         {
-            sandbox = Sandbox.AllFeatures,
-            sceneChangedBehaviour = bLuaSettings.SceneChangedBehaviour.DeInit
+            sandbox = Sandbox.AllFeatures
         });
 
-        instance.ExecBuffer("test_coroutine",
-            @"blua.print('Started Test Coroutine')
+        Debug.Log("Starting Test Coroutine");
 
-            function testYield(x)
+        instance.ExecBuffer("test_coroutine",
+            @"function testYield(x)
                 for i=1,x do
                     blua.print('test coroutine ' .. i)
                     coroutine.yield()
                 end
-
-                blua.print('Finished Test Coroutine')
             end");
+
         using (bLuaValue fn = instance.GetGlobal("testYield"))
         {
             instance.CallCoroutine(fn, 5);
@@ -341,14 +332,13 @@ public class UnitTests : MonoBehaviour
     {
         bLuaInstance instance = new bLuaInstance(new bLuaSettings()
         {
-            sandbox = Sandbox.AllFeatures,
-            sceneChangedBehaviour = bLuaSettings.SceneChangedBehaviour.DeInit
+            sandbox = Sandbox.AllFeatures
         });
 
-        instance.ExecBuffer("test_macros",
-            @"blua.print('Starting Thread Macros')
+        Debug.Log("Starting Thread Macros");
 
-            function testMacros(x)
+        instance.ExecBuffer("test_macros",
+            @"function testMacros(x)
                 blua.print('I print first')
                 delay(2, function()
                     blua.print('I print third')
@@ -365,15 +355,16 @@ public class UnitTests : MonoBehaviour
                 wait(t)
                 blua.print(s)
             end");
+
         using (bLuaValue fn = instance.GetGlobal("testMacros"))
         {
             instance.CallCoroutine(fn, 3);
         }
     }
 
-    public static int TestCFunction(System.IntPtr state)
+    public static int TestCFunction(IntPtr state)
     {
-        bLua.NativeLua.Lua.PushObjectOntoStack(unitInstance, 5);
+        bLua.NativeLua.Lua.PushObjectOntoStack(LuaHandle.GetHandleFromRegistry(bLua.NativeLua.Lua.GetMainThread(state)).instance, 5);
         return 1;
     }
 }

@@ -42,12 +42,12 @@ public class SceneNavigator : MonoBehaviour
 
     private void OnGUI()
     {
-        GUI.Box(new Rect(10f, Screen.height - (allSceneNames.Count * (sceneButtonHeight + 5f)) - 50f, sceneButtonWidth + 20f, (allSceneNames.Count * (sceneButtonHeight + 5f)) + 30f), "Scene Navigator");
+        GUI.Box(new Rect(10f, Screen.height - (allSceneNames.Count * (sceneButtonHeight + 5f)) - 40f, sceneButtonWidth + 20f, (allSceneNames.Count * (sceneButtonHeight + 5f)) + 30f), "Scene Navigator");
         
         for (int i = 0; i < allSceneNames.Count; i++)
         {
             string sceneName = allSceneNames[i];
-            Rect sceneButtonRect = new Rect(20f, Screen.height - (allSceneNames.Count * (sceneButtonHeight + 5f)) + (i * (sceneButtonHeight + 5f)) - 25f, sceneButtonWidth, sceneButtonHeight);
+            Rect sceneButtonRect = new Rect(20f, Screen.height - (allSceneNames.Count * (sceneButtonHeight + 5f)) + (i * (sceneButtonHeight + 5f)) - 15f, sceneButtonWidth, sceneButtonHeight);
 
             if (sceneName == currentSceneName)
             {

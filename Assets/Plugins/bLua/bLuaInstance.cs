@@ -106,31 +106,31 @@ namespace bLua
     /// <summary> Contains settings for the bLua runtime. </summary>
     public class bLuaSettings
     {
-        public enum SceneChangedBehaviour
-        {
-            None,
-            DeInit,
-            ReInit
-        }
-
         /// <summary> The selected sandbox (set of features) for bLua. </summary>
         public Sandbox sandbox = Sandbox.Safe;
 
-        /// <summary> Controls the behaviour of bLua when the active Unity scene changes. </summary>
-        public SceneChangedBehaviour sceneChangedBehaviour = SceneChangedBehaviour.ReInit;
+        public enum TickBehavior
+        {
+            /// <summary> Always tick at the tickInterval in the settings. </summary>
+            AlwaysTick,
+            /// <summary> Never tick automatically; use ManualTick() to tick instead. </summary>
+            Manual,
+            /// <summary> Tick at the tickInterval interval in the settings only when there is at least one active coroutines running in the instance. </summary>
+            TickOnlyWhenCoroutinesActive
+        }
 
         /// <summary> When true, bLua scripts will not tick automatically. You should call ManualTick() instead. </summary>
-        public bool manualTicking = false;
+        public TickBehavior tickBehavior = TickBehavior.AlwaysTick;
 
         /// <summary> The millisecond delay between bLua ticks. </summary>
-        public int tickDelay = 10; // 10 = 100 ticks per second
+        public int tickInterval = 10; // 10 = 100 ticks per second
 
         /// <summary> When true, all user data will be registered with the bLua instance these settings are for. If this is false, you can
         /// still manually register all assemblies or individual user data classes as needed. </summary>
         public bool autoRegisterAllUserData = true;
     }
 
-    public class bLuaInstance
+    public class bLuaInstance : IDisposable
     {
         bLuaSettings settings = new bLuaSettings();
 
@@ -195,6 +195,8 @@ namespace bLua
         #region Initialization
         /// <summary> Whether or not bLua has been initialized. </summary>
         bool initialized = false;
+        
+        bool reinitializing = false;
 
 
         /// <summary> Initialize Lua and handle enabling/disabled features based on the current sandbox. </summary>
@@ -213,8 +215,6 @@ namespace bLua
                 return;
             }
             initialized = true;
-
-            Debug.Log("Initializing bLua");
 
             SceneManager.activeSceneChanged -= OnActiveSceneChanged; // This can be done safely
             SceneManager.activeSceneChanged += OnActiveSceneChanged;
@@ -381,57 +381,41 @@ namespace bLua
             }
             #endregion // Feature Handling
 
-            if (!settings.manualTicking)
+            if (settings.tickBehavior != bLuaSettings.TickBehavior.Manual)
             {
                 // Start the threading needed for running bLua without a MonoBehaviour
                 StartTicking();
             }
         }
 
-        void OnActiveSceneChanged(Scene _a, Scene _b)
-        {
-            switch (settings.sceneChangedBehaviour)
-            {
-                case bLuaSettings.SceneChangedBehaviour.DeInit:
-                    DeInit();
-                    break;
-                case bLuaSettings.SceneChangedBehaviour.ReInit:
-                    DeInit();
-                    Init();
-                    break;
-            }
-        }
-
         void DeInit()
         {
-            OnTick.RemoveListener(TickCoroutines);
+            SceneManager.activeSceneChanged -= OnActiveSceneChanged;
 
+            OnTick.RemoveAllListeners();
             StopTicking();
 
             handle.Dispose();
 
-            lookups.Clear();
-
-            scheduledCoroutines.Clear();
-            ncoroutine = 0;
-            callco = null;
-            updateco = null;
-            cancelcos = null;
-
-            // User Data
-            _gc = null;
-            s_methods.Clear();
-            s_properties.Clear();
-            s_fields.Clear();
-            s_entries.Clear();
-            s_typenameToEntryIndex.Clear();
-
-            s_internedStrings.Clear();
-            Array.Clear(s_stringCache, 0, s_stringCache.Length);
-
             initialized = false;
 
-            Debug.Log("Deinitialized bLua");
+            if (!reinitializing)
+            {
+                GC.ReRegisterForFinalize(this);
+            }
+        }
+
+        void ReInit()
+        {
+            reinitializing = true;
+            DeInit();
+            Init();
+            reinitializing = false;
+        }
+
+        void OnActiveSceneChanged(Scene _a, Scene _b)
+        {
+            Dispose();
         }
         #endregion // Initialization
 
@@ -463,9 +447,13 @@ namespace bLua
             // Only continue ticking while this value is set. This allows us to close the tick thread from outside of it when we need to
             while (!requestStopTicking)
             {
-                InternalTick();
+                if (settings.tickBehavior != bLuaSettings.TickBehavior.TickOnlyWhenCoroutinesActive
+                    || (settings.tickBehavior == bLuaSettings.TickBehavior.TickOnlyWhenCoroutinesActive && numRunningCoroutines > 0))
+                {
+                    InternalTick();
+                }
 
-                await Task.Delay(settings.tickDelay);
+                await Task.Delay(settings.tickInterval);
             }
 
             ticking = false;
@@ -486,13 +474,13 @@ namespace bLua
             }
         }
 
-        void StartTicking()
+        public void StartTicking()
         {
             Tick();
             requestStartTicking = true;
         }
 
-        void StopTicking()
+        public void StopTicking()
         {
             requestStopTicking = true;
         }
@@ -728,33 +716,33 @@ namespace bLua
             return ((Feature)(int)settings.sandbox).HasFlag(_feature);
         }
 
+        #region C Functions called from Lua
         public static int CallFunction(IntPtr _state)
         {
             IntPtr mainThreadState = Lua.GetMainThread(_state);
+            bLuaInstance mainThreadInstance = LuaHandle.GetHandleFromRegistry(mainThreadState).instance;
 
-            bLuaInstance inst = LuaHandle.GetHandleFromRegistry(mainThreadState).instance;
-
-            var stateBack = inst.handle.state;
-            inst.handle.SetState(_state);
+            var stateBack = mainThreadInstance.handle.state;
+            mainThreadInstance.handle.SetState(_state);
 
             try
             {
                 int stackSize = LuaLibAPI.lua_gettop(_state);
                 if (stackSize == 0 || LuaLibAPI.lua_type(_state, 1) != (int)DataType.UserData)
                 {
-                    inst.Error($"Object not provided when calling function.");
+                    mainThreadInstance.Error($"Object not provided when calling function.");
                     return 0;
                 }
 
                 int n = LuaLibAPI.lua_tointegerx(_state, Lua.UpValueIndex(1), IntPtr.Zero);
 
-                if (n < 0 || n >= inst.s_methods.Count)
+                if (n < 0 || n >= mainThreadInstance.s_methods.Count)
                 {
-                    inst.Error($"Illegal method index: {n}");
+                    mainThreadInstance.Error($"Illegal method index: {n}");
                     return 0;
                 }
 
-                MethodCallInfo info = inst.s_methods[n];
+                MethodCallInfo info = mainThreadInstance.s_methods[n];
 
                 object[] parms = null;
                 int parmsIndex = 0;
@@ -789,18 +777,18 @@ namespace bLua
                 {
                     if (parms != null)
                     {
-                        parms[parmsIndex--] = Lua.PopStackIntoObject(inst);
+                        parms[parmsIndex--] = Lua.PopStackIntoObject(mainThreadInstance);
                     }
                     else
                     {
-                        Lua.PopStack(inst);
+                        Lua.PopStack(mainThreadInstance);
                     }
                     --stackSize;
                 }
 
                 while (stackSize > 1)
                 {
-                    args[argIndex] = bLuaUserData.PopStackIntoParamType(inst, info.argTypes[argIndex]);
+                    args[argIndex] = bLuaUserData.PopStackIntoParamType(mainThreadInstance, info.argTypes[argIndex]);
 
                     --stackSize;
                     --argIndex;
@@ -808,14 +796,14 @@ namespace bLua
 
                 if (LuaLibAPI.lua_gettop(_state) < 1)
                 {
-                    inst.Error($"Stack is empty");
+                    mainThreadInstance.Error($"Stack is empty");
                     return 0;
                 }
 
                 int t = LuaLibAPI.lua_type(_state, 1);
                 if (t != (int)DataType.UserData)
                 {
-                    inst.Error($"Object is not a user data: {((DataType)t).ToString()}");
+                    mainThreadInstance.Error($"Object is not a user data: {((DataType)t).ToString()}");
                     return 0;
                 }
 
@@ -823,16 +811,16 @@ namespace bLua
                 int res = LuaLibAPI.lua_getiuservalue(_state, 1, 1);
                 if (res != (int)DataType.Number)
                 {
-                    inst.Error($"Object not provided when calling function.");
+                    mainThreadInstance.Error($"Object not provided when calling function.");
                     return 0;
                 }
                 int liveObjectIndex = LuaLibAPI.lua_tointegerx(_state, -1, IntPtr.Zero);
 
-                object obj = inst.s_liveObjects[liveObjectIndex];
+                object obj = mainThreadInstance.s_liveObjects[liveObjectIndex];
 
                 object result = info.methodInfo.Invoke(obj, args);
 
-                bLuaUserData.PushReturnTypeOntoStack(inst, info.returnType, result);
+                bLuaUserData.PushReturnTypeOntoStack(mainThreadInstance, info.returnType, result);
                 return 1;
 
             }
@@ -843,28 +831,27 @@ namespace bLua
                 {
                     ex = e;
                 }
-                inst.Error($"Error calling function: {ex.Message}", $"{ex.StackTrace}");
+                mainThreadInstance.Error($"Error calling function: {ex.Message}", $"{ex.StackTrace}");
                 return 0;
             }
             finally
             {
-                inst.handle.SetState(stateBack);
+                mainThreadInstance.handle.SetState(stateBack);
             }
         }
 
         public static int CallStaticFunction(IntPtr _state)
         {
             IntPtr mainThreadState = Lua.GetMainThread(_state);
+            bLuaInstance mainThreadInstance = LuaHandle.GetHandleFromRegistry(mainThreadState).instance;
 
-            bLuaInstance inst = LuaHandle.GetHandleFromRegistry(mainThreadState).instance;
-
-            var stateBack = inst.handle.state;
-            inst.handle.SetState(_state);
+            var stateBack = mainThreadInstance.handle.state;
+            mainThreadInstance.handle.SetState(_state);
 
             try
             {
                 int n = LuaLibAPI.lua_tointegerx(_state, Lua.UpValueIndex(1), IntPtr.Zero);
-                MethodCallInfo info = inst.s_methods[n];
+                MethodCallInfo info = mainThreadInstance.s_methods[n];
 
                 int stackSize = LuaLibAPI.lua_gettop(_state);
 
@@ -900,25 +887,25 @@ namespace bLua
                 {
                     if (parms != null)
                     {
-                        parms[parmsIndex--] = Lua.PopStackIntoObject(inst);
+                        parms[parmsIndex--] = Lua.PopStackIntoObject(mainThreadInstance);
                     }
                     else
                     {
-                        Lua.PopStack(inst);
+                        Lua.PopStack(mainThreadInstance);
                     }
                     --stackSize;
                 }
 
                 while (stackSize > 0)
                 {
-                    args[argIndex] = bLuaUserData.PopStackIntoParamType(inst, info.argTypes[argIndex]);
+                    args[argIndex] = bLuaUserData.PopStackIntoParamType(mainThreadInstance, info.argTypes[argIndex]);
                     --stackSize;
                     --argIndex;
                 }
 
                 object result = info.methodInfo.Invoke(null, args);
 
-                bLuaUserData.PushReturnTypeOntoStack(inst, info.returnType, result);
+                bLuaUserData.PushReturnTypeOntoStack(mainThreadInstance, info.returnType, result);
                 return 1;
 
             }
@@ -929,35 +916,34 @@ namespace bLua
                 {
                     ex = ex.InnerException;
                 }
-                inst.Error($"Error calling function: {ex.Message}", $"{ex.StackTrace}");
+                mainThreadInstance.Error($"Error calling function: {ex.Message}", $"{ex.StackTrace}");
                 return 0;
             }
             finally
             {
-                inst.handle.SetState(stateBack);
+                mainThreadInstance.handle.SetState(stateBack);
             }
         }
 
         public static int IndexFunction(IntPtr _state)
         {
             IntPtr mainThreadState = Lua.GetMainThread(_state);
+            bLuaInstance mainThreadInstance = LuaHandle.GetHandleFromRegistry(mainThreadState).instance;
 
-            bLuaInstance inst = LuaHandle.GetHandleFromRegistry(mainThreadState).instance;
-
-            var stateBack = inst.handle.state;
+            var stateBack = mainThreadInstance.handle.state;
             try
             {
-                inst.handle.SetState(_state);
+                mainThreadInstance.handle.SetState(_state);
 
                 int n = LuaLibAPI.lua_tointegerx(_state, Lua.UpValueIndex(1), IntPtr.Zero);
 
-                if (n < 0 || n >= inst.s_entries.Count)
+                if (n < 0 || n >= mainThreadInstance.s_entries.Count)
                 {
-                    inst.Error($"Invalid type index in lua: {n}");
+                    mainThreadInstance.Error($"Invalid type index in lua: {n}");
                     return 0;
                 }
 
-                UserDataRegistryEntry userDataInfo = inst.s_entries[n];
+                UserDataRegistryEntry userDataInfo = mainThreadInstance.s_entries[n];
 
                 string str = Lua.GetString(_state, 2);
 
@@ -967,7 +953,7 @@ namespace bLua
                     switch (propertyEntry.propertyType)
                     {
                         case UserDataRegistryEntry.PropertyEntry.Type.Method:
-                            int val = Lua.PushStack(inst, inst.s_methods[propertyEntry.index].closure);
+                            int val = Lua.PushStack(mainThreadInstance, mainThreadInstance.s_methods[propertyEntry.index].closure);
                             return 1;
                         case UserDataRegistryEntry.PropertyEntry.Type.Property:
                             {
@@ -975,12 +961,12 @@ namespace bLua
                                 LuaLibAPI.lua_checkstack(_state, 1);
                                 LuaLibAPI.lua_getiuservalue(_state, 1, 1);
 
-                                int instanceIndex = Lua.PopInteger(inst);
-                                object obj = inst.s_liveObjects[instanceIndex];
+                                int instanceIndex = Lua.PopInteger(mainThreadInstance);
+                                object obj = mainThreadInstance.s_liveObjects[instanceIndex];
 
-                                var propertyInfo = inst.s_properties[propertyEntry.index];
+                                var propertyInfo = mainThreadInstance.s_properties[propertyEntry.index];
                                 var result = propertyInfo.propertyInfo.GetMethod.Invoke(obj, null);
-                                bLuaUserData.PushReturnTypeOntoStack(inst, propertyInfo.propertyType, result);
+                                bLuaUserData.PushReturnTypeOntoStack(mainThreadInstance, propertyInfo.propertyType, result);
                                 return 1;
                             }
                         case UserDataRegistryEntry.PropertyEntry.Type.Field:
@@ -988,18 +974,18 @@ namespace bLua
                                 //get the iuservalue for the userdata onto the stack.
                                 LuaLibAPI.lua_checkstack(_state, 1);
                                 LuaLibAPI.lua_getiuservalue(_state, 1, 1);
-                                int instanceIndex = Lua.PopInteger(inst);
-                                object obj = inst.s_liveObjects[instanceIndex];
+                                int instanceIndex = Lua.PopInteger(mainThreadInstance);
+                                object obj = mainThreadInstance.s_liveObjects[instanceIndex];
 
-                                var fieldInfo = inst.s_fields[propertyEntry.index];
+                                var fieldInfo = mainThreadInstance.s_fields[propertyEntry.index];
                                 var result = fieldInfo.fieldInfo.GetValue(obj);
-                                bLuaUserData.PushReturnTypeOntoStack(inst, fieldInfo.fieldType, result);
+                                bLuaUserData.PushReturnTypeOntoStack(mainThreadInstance, fieldInfo.fieldType, result);
                                 return 1;
                             }
                     }
                 }
 
-                Lua.PushNil(inst);
+                Lua.PushNil(mainThreadInstance);
 
                 return 1;
             }
@@ -1010,36 +996,35 @@ namespace bLua
                 {
                     ex = e;
                 }
-                inst.Error("Error indexing userdata", $"Error in index: {ex.Message} {ex.StackTrace}");
-                Lua.PushNil(inst);
+                mainThreadInstance.Error("Error indexing userdata", $"Error in index: {ex.Message} {ex.StackTrace}");
+                Lua.PushNil(mainThreadInstance);
                 return 1;
             }
             finally
             {
-                inst.handle.SetState(stateBack);
+                mainThreadInstance.handle.SetState(stateBack);
             }
         }
 
         public static int SetIndexFunction(IntPtr _state)
         {
             IntPtr mainThreadState = Lua.GetMainThread(_state);
+            bLuaInstance mainThreadInstance = LuaHandle.GetHandleFromRegistry(mainThreadState).instance;
 
-            bLuaInstance inst = LuaHandle.GetHandleFromRegistry(mainThreadState).instance;
-
-            var stateBack = inst.handle.state;
-            inst.handle.SetState(_state);
+            var stateBack = mainThreadInstance.handle.state;
+            mainThreadInstance.handle.SetState(_state);
 
             try
             {
                 int n = LuaLibAPI.lua_tointegerx(_state, Lua.UpValueIndex(1), IntPtr.Zero);
 
-                if (n < 0 || n >= inst.s_entries.Count)
+                if (n < 0 || n >= mainThreadInstance.s_entries.Count)
                 {
-                    inst.Error($"Invalid type index in lua: {n}");
+                    mainThreadInstance.Error($"Invalid type index in lua: {n}");
                     return 0;
                 }
 
-                UserDataRegistryEntry userDataInfo = inst.s_entries[n];
+                UserDataRegistryEntry userDataInfo = mainThreadInstance.s_entries[n];
 
                 string str = Lua.GetString(_state, 2);
 
@@ -1051,13 +1036,13 @@ namespace bLua
                         LuaLibAPI.lua_checkstack(_state, 1);
                         //get the iuservalue for the userdata onto the stack.
                         LuaLibAPI.lua_getiuservalue(_state, 1, 1);
-                        int instanceIndex = Lua.PopInteger(inst);
-                        object obj = inst.s_liveObjects[instanceIndex];
+                        int instanceIndex = Lua.PopInteger(mainThreadInstance);
+                        object obj = mainThreadInstance.s_liveObjects[instanceIndex];
 
                         object[] args = new object[1];
 
-                        var propertyInfo = inst.s_properties[propertyEntry.index];
-                        args[0] = bLuaUserData.PopStackIntoParamType(inst, propertyInfo.propertyType);
+                        var propertyInfo = mainThreadInstance.s_properties[propertyEntry.index];
+                        args[0] = bLuaUserData.PopStackIntoParamType(mainThreadInstance, propertyInfo.propertyType);
 
 
                         propertyInfo.propertyInfo.SetMethod.Invoke(obj, args);
@@ -1068,11 +1053,11 @@ namespace bLua
                         LuaLibAPI.lua_checkstack(_state, 1);
                         //get the iuservalue for the userdata onto the stack.
                         LuaLibAPI.lua_getiuservalue(_state, 1, 1);
-                        int instanceIndex = Lua.PopInteger(inst);
-                        object obj = inst.s_liveObjects[instanceIndex];
+                        int instanceIndex = Lua.PopInteger(mainThreadInstance);
+                        object obj = mainThreadInstance.s_liveObjects[instanceIndex];
 
-                        var fieldInfo = inst.s_fields[propertyEntry.index];
-                        var arg = bLuaUserData.PopStackIntoParamType(inst, fieldInfo.fieldType);
+                        var fieldInfo = mainThreadInstance.s_fields[propertyEntry.index];
+                        var arg = bLuaUserData.PopStackIntoParamType(mainThreadInstance, fieldInfo.fieldType);
 
                         fieldInfo.fieldInfo.SetValue(obj, arg);
                         return 0;
@@ -1080,27 +1065,40 @@ namespace bLua
 
                 }
 
-                inst.Error($"Could not set property {str}");
+                mainThreadInstance.Error($"Could not set property {str}");
                 return 0;
             }
             finally
             {
-                inst.handle.SetState(stateBack);
+                mainThreadInstance.handle.SetState(stateBack);
             }
         }
 
         public static int GCFunction(IntPtr _state)
         {
-            IntPtr mainThreadState = Lua.GetMainThread(_state);
+            if (_state == IntPtr.Zero)
+            {
+                return 0;
+            }
 
-            bLuaInstance inst = LuaHandle.GetHandleFromRegistry(mainThreadState).instance;
+            IntPtr mainThreadState = Lua.GetMainThread(_state);
+            LuaHandle mainThreadHandle = LuaHandle.GetHandleFromRegistry(mainThreadState);
+            
+            if (mainThreadHandle == null)
+            {
+                return 0;
+            }
+
+            bLuaInstance mainThreadInstance = mainThreadHandle.instance;
 
             LuaLibAPI.lua_checkstack(_state, 1);
             LuaLibAPI.lua_getiuservalue(_state, 1, 1);
-            int n = LuaLibAPI.lua_tointegerx(inst.handle.state, -1, IntPtr.Zero);
-            inst.s_liveObjects[n] = null;
-            inst.s_liveObjectsFreeList.Add(n);
+            int n = LuaLibAPI.lua_tointegerx(mainThreadInstance.handle.state, -1, IntPtr.Zero);
+            mainThreadInstance.s_liveObjects[n] = null;
+            mainThreadInstance.s_liveObjectsFreeList.Add(n);
+
             return 0;
         }
+        #endregion // C Functions called from Lua
     }
 } // bLua namespace

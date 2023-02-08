@@ -40,10 +40,9 @@ public class bLuaBenchmark : Benchmark
     protected override object GetScript()
     {
         return new bLuaInstance(new bLuaSettings()
-            {
-                sandbox = Sandbox.AllFeatures,
-                sceneChangedBehaviour = bLuaSettings.SceneChangedBehaviour.DeInit
-            });
+        {
+            sandbox = Sandbox.AllFeatures
+        });
     }
 
     protected override object RegisterUserData(object script)
