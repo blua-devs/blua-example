@@ -60,6 +60,32 @@ namespace bLua.NativeLua
             return thread;
         }
 
+        /// <remarks> WARNING!!! All variables declared in an environment must be declared with `local` </remarks>
+        /// <summary> Call this after loading a buffer, and before calling it. This function creates an empty environment for the provided name (overwriting
+        /// an existing one, if there is one) and copies over _G from the main environment so libraries can be accessed. </summary>
+        public static void SetupEnvironmentForBuffer(IntPtr _state, string _environment)
+        {
+            LuaLibAPI.lua_getglobal(_state, _environment); // pushes a new, named environment (_environment). S: (buffer)(newEnv)
+            LuaLibAPI.lua_createtable(_state, 0, 0); // pushes an empty table. S: (buffer)(newEnv)(emptyTab)
+            LuaLibAPI.lua_getglobal(_state, "_G"); // pushes _G. S: (buffer)(newEnv)(emptyTab)(_G)
+            LuaLibAPI.lua_setfield(_state, -2, Lua.StringToIntPtr("__index")); // sets the stack value at index to the -1 stack index. pops the value. S: (buffer)(newEnv)(emptyTabWith_GCopy)
+            LuaLibAPI.lua_setmetatable(_state, -2); // pops -1 stack index and sets it to the stack value at index. S: (buffer)(newEnvWith_GCopyMetaTable)
+            LuaLibAPI.lua_setupvalue(_state, -2, 1); // assigns -1 stack index to the upvalue for value in stack at index. S: (bufferWithNewEnvUpvalue)
+        }
+
+        public static IntPtr StringToIntPtr(string _string)
+        {
+            byte[] b = StrToUTF8(_string);
+
+            unsafe
+            {
+                fixed (byte* p = b)
+                {
+                    return new IntPtr((void*)p);
+                }
+            }
+        }
+
         public static byte[] StrToUTF8(string _string)
         {
             return System.Text.UTF8Encoding.UTF8.GetBytes(_string);
@@ -142,14 +168,7 @@ namespace bLua.NativeLua
         public static void PushString(IntPtr _state, string _string)
         {
             byte[] b = StrToUTF8(_string);
-
-            unsafe
-            {
-                fixed (byte* p = b)
-                {
-                    LuaLibAPI.lua_pushlstring(_state, new IntPtr((void*)p), (ulong)b.Length);
-                }
-            }
+            LuaLibAPI.lua_pushlstring(_state, StringToIntPtr(_string), (ulong)b.Length);
         }
 
         public static void PushObjectOntoStack(bLuaInstance _instance, string _d)

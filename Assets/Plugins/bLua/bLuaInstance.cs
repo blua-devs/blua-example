@@ -420,9 +420,12 @@ namespace bLua
             reinitializing = false;
         }
 
-        void OnActiveSceneChanged(Scene _a, Scene _b)
+        void OnActiveSceneChanged(Scene _previous, Scene _new)
         {
-            Dispose();
+            if (_previous.IsValid())
+            {
+                Dispose();
+            }
         }
         #endregion // Initialization
 
@@ -588,7 +591,7 @@ namespace bLua
         public LuaErrorDelegate LuaErrorHandler;
 
 
-        public class LuaException : System.Exception
+        public class LuaException : Exception
         {
             public LuaException(string message) : base(message)
             {
@@ -633,16 +636,27 @@ namespace bLua
         /// <summary> Loads a buffer as a Lua chunk and runs it. </summary>
         /// <param name="_name">The chunk name, used for debug information and error messages.</param>
         /// <param name="_text">The Lua code to load.</param>
-        public void ExecBuffer(string _name, string _text, int _nresults = 0)
+        public void ExecBuffer(string _name, string _text, int _nresults = 0, string _environment = "")
         {
+            if (!initialized)
+            {
+                Debug.LogError("Attempt to ExecBuffer when instance is not initialized.");
+                return;
+            }
+
             using (Lua.s_profileLuaCall.Auto())
             {
-                int result = LuaXLibAPI.luaL_loadbufferx(state, _text, (ulong)_text.Length, _name, null);
+                int result = LuaXLibAPI.luaL_loadbufferx(state, _text, (ulong)_text.Length, _name, null); // S: (buffer)
                 if (result != 0)
                 {
                     string msg = Lua.GetString(state, -1);
                     Lua.LuaPop(state, 1);
                     throw new LuaException(msg);
+                }
+
+                if (_environment != "")
+                {
+                    Lua.SetupEnvironmentForBuffer(state, _environment);
                 }
 
                 using (Lua.s_profileLuaCallInner.Auto())
@@ -665,6 +679,12 @@ namespace bLua
         /// <returns>The output from the called Lua function.</returns>
         public bLuaValue Call(bLuaValue _fn, params object[] _args)
         {
+            if (!initialized)
+            {
+                Debug.LogError("Attempt to Call function when instance is not initialized.");
+                return null;
+            }
+
             using (Lua.s_profileLuaCall.Auto())
             {
                 Lua.PushStack(this, _fn);

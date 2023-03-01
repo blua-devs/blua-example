@@ -41,7 +41,7 @@ namespace bLua.NativeLua
         [DllImport(Lua.dllName)]
         public static extern void lua_setglobal(System.IntPtr state, string key);
 
-        //returns a char*
+        // returns a char*
         [DllImport(Lua.dllName)]
         public static extern System.IntPtr lua_typename(System.IntPtr state, int idx);
 
@@ -63,6 +63,9 @@ namespace bLua.NativeLua
 
         [DllImport(Lua.dllName)]
         public static extern void lua_pushboolean(System.IntPtr state, int b);
+
+        [DllImport(Lua.dllName)]
+        public static extern void lua_pushvalue(System.IntPtr state, int index);
 
         [DllImport(Lua.dllName)]
         public static extern void lua_xmove(System.IntPtr state, System.IntPtr to, int n);
@@ -99,6 +102,10 @@ namespace bLua.NativeLua
 
         [DllImport(Lua.dllName)]
         public static extern int lua_setiuservalue(System.IntPtr state, int idx, int n);
+
+        // returns a char*
+        [DllImport(Lua.dllName)]
+        public static extern System.IntPtr lua_setupvalue(System.IntPtr state, int funcindex, int n);
 
         [DllImport(Lua.dllName)]
         public static extern int lua_setmetatable(System.IntPtr state, int objindex);
@@ -140,6 +147,9 @@ namespace bLua.NativeLua
         public static extern void luaopen_package(System.IntPtr state);
 
         [DllImport(Lua.dllName)]
+        public static extern int lua_pcall(System.IntPtr state, int nargs, int nresults, int msgh);
+
+        [DllImport(Lua.dllName)]
         public static extern int lua_pcallk(System.IntPtr state, int nargs, int nresults, int msgh, long ctx, System.IntPtr k);
 
         [DllImport(Lua.dllName)]
@@ -165,5 +175,8 @@ namespace bLua.NativeLua
 
         [DllImport(Lua.dllName)]
         public static extern int lua_compare(System.IntPtr state, int idx1, int idx2, int op);
+
+        [DllImport(Lua.dllName)]
+        public static extern void lua_setfield(System.IntPtr state, int idx, System.IntPtr k);
     }
 } // bLua.NativeLua namespace
