@@ -237,6 +237,7 @@ namespace bLua
             }
 
             // Setup the bLua Global Library
+            bLuaUserData.Register(this, typeof(bLuaGlobalLibrary));
             SetGlobal("blua", bLuaValue.CreateUserData(this, new bLuaGlobalLibrary()));
 
             #region Feature Handling

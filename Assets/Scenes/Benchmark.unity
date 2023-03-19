@@ -332,6 +332,7 @@ GameObject:
   - component: {fileID: 1459351210}
   - component: {fileID: 1459351209}
   - component: {fileID: 1459351208}
+  - component: {fileID: 1459351211}
   m_Layer: 0
   m_Name: Benchmark
   m_TagString: Untagged
@@ -386,6 +387,22 @@ Transform:
   m_Father: {fileID: 0}
   m_RootOrder: 1
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1459351211
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1459351207}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4ba820fa204f60147bfe46deda64a940, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  OnBenchmarksRan:
+    m_PersistentCalls:
+      m_Calls: []
+  identifier: xLua
 --- !u!1 &1829402139
 GameObject:
   m_ObjectHideFlags: 0

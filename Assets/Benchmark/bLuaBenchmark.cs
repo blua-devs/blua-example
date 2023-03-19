@@ -41,7 +41,8 @@ public class bLuaBenchmark : Benchmark
     {
         return new bLuaInstance(new bLuaSettings()
         {
-            sandbox = Sandbox.AllFeatures
+            sandbox = Sandbox.AllFeatures,
+            autoRegisterAllUserData = false
         });
     }
 

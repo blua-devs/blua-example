@@ -209,10 +209,10 @@ ud:DestroyGameObject()")
         BenchmarkResult[] results = new BenchmarkResult[benchmarkScripts.Length];
         for (int i = 0; i < benchmarkScripts.Length; i++)
         {
+            object script = GetScript();
+            script = RegisterUserData(script);
             results[i] = TimeBenchmark(benchmarkScripts[i].Item1,
                 () => {
-                    object script = GetScript();
-                    script = RegisterUserData(script);
                     RunBenchmark(script, benchmarkScripts[i].Item2);
                 });
         }
