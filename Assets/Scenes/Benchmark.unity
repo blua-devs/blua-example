@@ -331,8 +331,8 @@ GameObject:
   m_Component:
   - component: {fileID: 1459351210}
   - component: {fileID: 1459351209}
-  - component: {fileID: 1459351208}
   - component: {fileID: 1459351211}
+  - component: {fileID: 1459351208}
   m_Layer: 0
   m_Name: Benchmark
   m_TagString: Untagged

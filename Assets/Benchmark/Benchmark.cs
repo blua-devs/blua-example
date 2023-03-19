@@ -76,7 +76,7 @@ public partial class BenchmarkUserData
         return a + b + c + d + e + f + g + h;
     }
 
-    public int AddValuesVariableArgs(int a, params object[] b)
+    public virtual int AddValuesVariableArgs(int a, params object[] b)
     {
         int c = a;
         for (int i = 0; i < b.Length; i++)
@@ -128,58 +128,64 @@ public class Benchmark : MonoBehaviour
     /// benchmark ran the test. </summary>
     [HideInInspector] public string identifier;
 
+    protected virtual string script_NoOperation =>
+        @"";
+
+    protected virtual string script_BasicAddition =>
+        @"function add(x)
+            return x + 5
+        end
+
+        local val
+        for i=1,1000 do
+            val = add(i)
+        end";
+
+    protected virtual string script_LotsOfArgsAddition =>
+        @"function add(a, b, c, d, e, f, g, h)
+            return a + b + c + d + e + f + g + h + 5
+        end
+
+        local val
+        for i=1,1000 do
+            val = add(i, 2, 3, 4, 5, 6, 7, 8)
+        end";
+
+    protected virtual string script_MakeBigTable =>
+        @"function make_big_table()
+            local result = {}
+            for i=1,1000 do
+                result[tostring(i)] = i
+            end
+            return result
+        end
+
+        make_big_table()";
+
+    protected virtual string script_ArgsToUserData =>
+        @"local ud = UserData.CreateUserDataStatic(1)
+        local a = ud:AddValues(2, 3)
+        local b = UserData.AddValuesStatic(4, 5)
+        local c = ud:AddValuesVariableArgs(6, 7, 8, 9)
+        local d = ud:AddValuesLotsOfArgs(10, 11, 12, 13, 14, 15, 16, 17)";
+
+    protected virtual string script_AffectGameObject =>
+        @"local ud = UserData.CreateUserDataStatic(0)
+        ud:CreateGameObject()
+        for i=1,100 do
+            ud:TransformGameObject(i)
+        end
+        ud:DestroyGameObject()";
+
     /// <summary> All of the scripts to test for benchmarking. </summary>
-    protected readonly Tuple<string /* Test name */, string /* Lua */>[] benchmarkScripts =
+    protected virtual Tuple<string /* Test name */, string /* Lua */>[] benchmarkScripts => new Tuple<string, string>[]
     {
-        new Tuple<string, string>(
-            "NoOperation",
-@""),
-        new Tuple<string, string>(
-            "BasicAddition",
-@"function add(x)
-    return x + 5
-end
-
-local val
-for i=1,1000 do
-    val = add(i)
-end"),
-        new Tuple<string, string>(
-            "LotsOfArgsAddition",
-@"function add(a, b, c, d, e, f, g, h)
-    return a + b + c + d + e + f + g + h + 5
-end
-
-local val
-for i=1,1000 do
-    val = add(i, 2, 3, 4, 5, 6, 7, 8)
-end"),
-        new Tuple<string, string>(
-            "MakeBigTable",
-@"function make_big_table()
-    local result = {}
-    for i=1,1000 do
-        result[tostring(i)] = i
-    end
-    return result
-end
-
-make_big_table()"),
-        new Tuple<string, string>(
-            "ArgsToUserData",
-@"local ud = UserData.CreateUserDataStatic(1)
-local a = ud:AddValues(2, 3)
-local b = UserData.AddValuesStatic(4, 5)
-local c = ud:AddValuesVariableArgs(6, 7, 8, 9)
-local d = ud:AddValuesLotsOfArgs(10, 11, 12, 13, 14, 15, 16, 17)"),
-        new Tuple<string, string>(
-            "AffectGameObject",
-@"local ud = UserData.CreateUserDataStatic(0)
-ud:CreateGameObject()
-for i=1,100 do
-    ud:TransformGameObject(i)
-end
-ud:DestroyGameObject()")
+        new Tuple<string, string>("NoOperation", script_NoOperation),
+        new Tuple<string, string>("BasicAddition", script_BasicAddition),
+        new Tuple<string, string>("LotsOfArgsAddition", script_LotsOfArgsAddition),
+        new Tuple<string, string>("MakeBigTable", script_MakeBigTable),
+        new Tuple<string, string>("ArgsToUserData", script_ArgsToUserData),
+        new Tuple<string, string>("AffectGameObject", script_AffectGameObject)
     };
 
 
