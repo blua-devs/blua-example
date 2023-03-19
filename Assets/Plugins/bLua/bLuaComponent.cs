@@ -33,47 +33,26 @@ public class bLuaComponentEditor : Editor
 
 public class bLuaComponent : MonoBehaviour
 {
-    static Dictionary<string, bLuaInstance> instanceByKey = new Dictionary<string, bLuaInstance>();
-    static bLuaInstance GetOrCreateInstance(string _key)
-    {
-        if (!instanceByKey.ContainsKey(_key)
-            || instanceByKey[_key] == null)
-        {
-            instanceByKey[_key] = new bLuaInstance();
-        }
-        return instanceByKey[_key];
-    }
+    public static bLuaInstance instance = new bLuaInstance();
 
     /// <summary> When true, this bLuaComponent will run its code when Unity's Start event fires. If this is set to false, you will need to 
     /// tell the bLuaComponent when to run the code via RunCode(). </summary>
     [SerializeField]
     bool runCodeOnStart = true;
 
-    /// <summary> bLuaComponents that share an instance key with both exist in the same bLuaInstance. There are large performance benefits to
-    /// putting all of your game's Lua in the bLuaInstance. In rare cases where you want unrelated parts of your game that don't interact with the
-    /// same content to have their own bLuaInstance, you would set this value to differ. </summary>
-    [SerializeField]
-    string instanceKey = "default";
-
     /// <summary> The name of the Lua chunk. Used for debug information and error messages. </summary>
     [SerializeField]
     string chunkName = "default_component";
 
-    /// <summary> The name of the environment to load the Lua chunk into. </summary>
-    [SerializeField]
-    string environmentName = "default_environment";
-
     /// <summary> The code that will be run on this component. </summary>
     [SerializeField]
     [TextArea(2, 512)]
-    string code = "";
-
-    bLuaInstance instance;
+    string code;
 
 
     private void Awake()
     {
-        instance = GetOrCreateInstance(instanceKey);
+
     }
 
     private void Start()
@@ -96,7 +75,12 @@ public class bLuaComponent : MonoBehaviour
     {
         if (!ranCode)
         {
-            instance.ExecBuffer(chunkName, code, 0, environmentName);
+            instance.RegisterUserData(typeof(bLuaGameObject));
+
+            bLuaValue env = bLuaValue.CreateTable(instance);
+            env.Set("gameObject", new bLuaGameObject(this.gameObject));
+
+            instance.DoBuffer(chunkName, code, env);
             ranCode = true;
         }
     }

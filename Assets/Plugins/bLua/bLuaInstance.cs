@@ -626,24 +626,24 @@ namespace bLua
 
         /// <summary> Loads a string of Lua code and runs it. </summary>
         /// <param name="_code">The string of code to run.</param>
-        public bLuaValue DoString(string _code)
+        public bLuaValue DoString(string _code, bLuaValue _environment = null)
         {
-            return DoBuffer("code", _code);
+            return DoBuffer("code", _code, _environment);
         }
 
         /// <summary> Loads a buffer as a Lua chunk and runs it. </summary>
         /// <param name="_name">The chunk name, used for debug information and error messages.</param>
         /// <param name="_text">The Lua code to load.</param>
-        public bLuaValue DoBuffer(string _name, string _text)
+        public bLuaValue DoBuffer(string _name, string _text, bLuaValue _environment = null)
         {
-            ExecBuffer(_name, _text, 1);
+            ExecBuffer(_name, _text, 1, _environment);
             return Lua.PopStackIntoValue(this);
         }
 
         /// <summary> Loads a buffer as a Lua chunk and runs it. </summary>
         /// <param name="_name">The chunk name, used for debug information and error messages.</param>
         /// <param name="_text">The Lua code to load.</param>
-        public void ExecBuffer(string _name, string _text, int _nresults = 0, string _environment = "")
+        public void ExecBuffer(string _name, string _text, int _nresults = 0, bLuaValue _environment = null)
         {
             if (!initialized)
             {
@@ -661,9 +661,14 @@ namespace bLua
                     throw new LuaException(msg);
                 }
 
-                if (_environment != "")
+                if (_environment != null)
                 {
-                    Lua.SetupEnvironmentForBuffer(state, _environment);
+                    Lua.PushStack(this, _environment); // pushes the given table. S: (buffer)(env)
+                    LuaLibAPI.lua_createtable(state, 0, 0); // pushes an empty table. S: (buffer)(env)(emptyTable)
+                    LuaLibAPI.lua_getglobal(state, "_G"); // pushes _G. S: (buffer)(newEenvnv)(emptyTable)(_G)
+                    LuaLibAPI.lua_setfield(state, -2, Lua.StringToIntPtr("__index")); // sets the stack at index to the -1 stack index's value. pops the value. S: (buffer)(env)(emptyTableWith_GAs__index)
+                    LuaLibAPI.lua_setmetatable(state, -2); // pops -1 stack index and sets it to the stack value at index. S: (buffer)(envWith_GAs__index)
+                    LuaLibAPI.lua_setupvalue(state, -2, 1); // assigns -1 stack index to the upvalue for value in stack at index. S: (bufferWithEnvUpvalue)
                 }
 
                 using (Lua.s_profileLuaCallInner.Auto())
