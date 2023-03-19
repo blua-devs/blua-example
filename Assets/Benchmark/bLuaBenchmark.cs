@@ -29,6 +29,7 @@ public partial class BenchmarkUserData
 
 public class bLuaBenchmark : Benchmark
 {
+    List<bLuaInstance> instances = new List<bLuaInstance>();
 
 
     protected override void Init()
@@ -39,11 +40,14 @@ public class bLuaBenchmark : Benchmark
 
     protected override object GetScript()
     {
-        return new bLuaInstance(new bLuaSettings()
+        bLuaInstance instance = new bLuaInstance(new bLuaSettings()
         {
             sandbox = Sandbox.AllFeatures,
             autoRegisterAllUserData = false
         });
+        instances.Add(instance);
+
+        return instance;
     }
 
     protected override object RegisterUserData(object script)
@@ -63,6 +67,14 @@ public class bLuaBenchmark : Benchmark
         if (instance != null)
         {
             instance.DoString(lua);
+        }
+    }
+
+    protected override void Cleanup()
+    {
+        foreach (bLuaInstance instance in instances.ToArray())
+        {
+            instance.Dispose();
         }
     }
 }

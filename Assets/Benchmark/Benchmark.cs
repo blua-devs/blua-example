@@ -222,6 +222,7 @@ public class Benchmark : MonoBehaviour
                     RunBenchmark(script, benchmarkScripts[i].Item2);
                 });
         }
+        Cleanup();
 
         // Print the results to the console/log
         for (int i = 0; i < results.Length; i++)
@@ -255,6 +256,12 @@ public class Benchmark : MonoBehaviour
     protected virtual void RunBenchmark(object script, string lua)
     {
         throw new System.NotImplementedException();
+    }
+
+    /// <summary> This *can be* overridden to clean up anything that should be cleaned up after all benchmarks are run. </summary>
+    protected virtual void Cleanup()
+    {
+        //
     }
 
     /// <summary> Runs a benchmark test and prints the results to the console. </summary>
