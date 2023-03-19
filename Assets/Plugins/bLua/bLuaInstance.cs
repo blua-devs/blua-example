@@ -1132,5 +1132,25 @@ namespace bLua
             return 0;
         }
         #endregion // C Functions called from Lua
+
+        #region Userdata
+        /// <summary> Registers all C# types in all assemblies with the [bLuaUserData] attribute as Lua userdata on this particular instance. </summary>
+        public void RegisterAllAssembliesUserData()
+        {
+            bLuaUserData.RegisterAllAssemblies(this);
+        }
+
+        /// <summary> Registers all C# types in a given assembly with the [bLuaUserData] attribute as Lua userdata on this particular instance. </summary>
+        public void RegisterAssemblyUserData(System.Reflection.Assembly _assembly)
+        {
+            bLuaUserData.RegisterAssembly(this, _assembly);
+        }
+
+        /// <summary> Registers a given C# type as Lua userdata on this particular instance. </summary>
+        public void RegisterUserData(Type _type)
+        {
+            bLuaUserData.Register(this, _type);
+        }
+        #endregion
     }
 } // bLua namespace
