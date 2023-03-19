@@ -583,6 +583,12 @@ namespace bLua
             Lua.PushStack(this, _value);
             LuaLibAPI.lua_setglobal(state, _key);
         }
+
+        public void SetGlobal(string _key, object _userDataObject)
+        {
+            bLuaValue v = bLuaValue.CreateUserData(this, _userDataObject);
+            SetGlobal(_key, v);
+        }
         #endregion // Globals
 
         #region Errors
