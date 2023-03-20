@@ -80,6 +80,7 @@ public class bLuaComponent : MonoBehaviour
 
             bLuaValue env = bLuaValue.CreateTable(instance);
             env.Set("gameObject", new bLuaGameObject(this.gameObject));
+            env.Set<string, Func<string>>("GetSceneName", () => { return UnityEngine.SceneManagement.SceneManager.GetActiveScene().name; });
 
             instance.DoBuffer(chunkName, code, env);
             ranCode = true;

@@ -63,6 +63,11 @@ namespace bLua
         public bLuaValue closure;
     }
 
+    public class DelegateCallInfo : MethodCallInfo
+    {
+        public MulticastDelegate multicastDelegate;
+    }
+
     public class PropertyCallInfo
     {
         public PropertyInfo propertyInfo;
@@ -335,11 +340,11 @@ namespace bLua
                 LuaCFunction fn;
                 if (methodInfo.IsStatic)
                 {
-                    fn = bLuaInstance.CallStaticFunction;
+                    fn = bLuaInstance.CallStaticUserDataFunction;
                 }
                 else
                 {
-                    fn = bLuaInstance.CallFunction;
+                    fn = bLuaInstance.CallUserDataFunction;
                 }
 
                 _instance.s_methods.Add(new MethodCallInfo()

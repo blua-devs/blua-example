@@ -159,7 +159,7 @@ namespace bLua
 
         Dictionary<string, bLuaValue> lookups = new Dictionary<string, bLuaValue>();
 
-        //whenever we add a method we just add it to this list to be indexed.
+        // Whenever we add a method we just add it to this list to be indexed
         public List<MethodCallInfo> s_methods = new List<MethodCallInfo>();
         public List<PropertyCallInfo> s_properties = new List<PropertyCallInfo>();
         public List<FieldCallInfo> s_fields = new List<FieldCallInfo>();
@@ -756,7 +756,103 @@ namespace bLua
         }
 
         #region C Functions called from Lua
-        public static int CallFunction(IntPtr _state)
+        public static int CallDelegate(IntPtr _state)
+        {
+            IntPtr mainThreadState = Lua.GetMainThread(_state);
+            bLuaInstance mainThreadInstance = GetInstanceByState(mainThreadState);
+
+            var stateBack = mainThreadInstance.state;
+            try
+            {
+                mainThreadInstance.state = _state;
+
+                int stackSize = LuaLibAPI.lua_gettop(_state);
+
+                int n = LuaLibAPI.lua_tointegerx(_state, Lua.UpValueIndex(1), IntPtr.Zero);
+
+                if (n < 0 || n >= mainThreadInstance.s_methods.Count)
+                {
+                    mainThreadInstance.Error($"Illegal method index: {n}");
+                    return 0;
+                }
+
+                MethodCallInfo methodCallInfo = mainThreadInstance.s_methods[n];
+                DelegateCallInfo info = methodCallInfo as DelegateCallInfo;
+
+                object[] parms = null;
+                int parmsIndex = 0;
+
+                int parametersLength = info.argTypes.Length;
+                if (parametersLength > 0 && info.argTypes[parametersLength - 1] == MethodCallInfo.ParamType.Params)
+                {
+                    parametersLength--;
+                    if (stackSize > parametersLength)
+                    {
+                        parms = new object[(stackSize) - parametersLength];
+                        parmsIndex = parms.Length - 1;
+                    }
+                }
+
+                object[] args = new object[info.argTypes.Length];
+                int argIndex = args.Length - 1;
+
+                // Set the last args index to be the parameters array
+                if (parms != null)
+                {
+                    args[argIndex--] = parms;
+                }
+
+                while (argIndex > stackSize - 1)
+                {
+                    // Backfill any arguments with defaults.
+                    args[argIndex] = info.defaultArgs[argIndex];
+                    --argIndex;
+                }
+                while (stackSize - 1 > argIndex)
+                {
+                    // Backfill the parameters with values from the Lua stack
+                    if (parms != null)
+                    {
+                        parms[parmsIndex--] = Lua.PopStackIntoObject(mainThreadInstance);
+                    }
+                    else
+                    {
+                        Lua.PopStack(mainThreadInstance);
+                    }
+                    --stackSize;
+                }
+
+                while (stackSize > 0)
+                {
+                    args[argIndex] = bLuaUserData.PopStackIntoParamType(mainThreadInstance, info.argTypes[argIndex]);
+
+                    --stackSize;
+                    --argIndex;
+                }
+
+                object result = info.multicastDelegate.DynamicInvoke(args);
+
+                bLuaUserData.PushReturnTypeOntoStack(mainThreadInstance, info.returnType, result);
+                return 1;
+
+            }
+            catch (Exception e)
+            {
+                var ex = e.InnerException;
+                if (ex == null)
+                {
+                    ex = e;
+                }
+                mainThreadInstance.Error($"Error calling delegate: {ex.Message}", $"{ex.StackTrace}");
+                return 0;
+            }
+            finally
+            {
+                mainThreadInstance.state = stateBack;
+            }
+        }
+
+        public static int CallUserDataFunction(IntPtr _state)
         {
             IntPtr mainThreadState = Lua.GetMainThread(_state);
             bLuaInstance mainThreadInstance = GetInstanceByState(mainThreadState);
@@ -808,7 +904,7 @@ namespace bLua
 
                 while (argIndex > stackSize - 2)
                 {
-                    //backfill any arguments with defaults.
+                    // Backfill any arguments with defaults.
                     args[argIndex] = info.defaultArgs[argIndex];
                     --argIndex;
                 }
@@ -879,7 +975,7 @@ namespace bLua
             }
         }
 
-        public static int CallStaticFunction(IntPtr _state)
+        public static int CallStaticUserDataFunction(IntPtr _state)
         {
             IntPtr mainThreadState = Lua.GetMainThread(_state);
             bLuaInstance mainThreadInstance = GetInstanceByState(mainThreadState);
@@ -918,7 +1014,7 @@ namespace bLua
 
                 while (argIndex > stackSize - 1)
                 {
-                    //backfill any arguments with nulls.
+                    // Backfill any arguments with nulls.
                     args[argIndex] = info.defaultArgs[argIndex];
                     --argIndex;
                 }
@@ -996,7 +1092,7 @@ namespace bLua
                             return 1;
                         case UserDataRegistryEntry.PropertyEntry.Type.Property:
                             {
-                                //get the iuservalue for the userdata onto the stack.
+                                // Get the iuservalue for the userdata onto the stack.
                                 LuaLibAPI.lua_checkstack(_state, 1);
                                 LuaLibAPI.lua_getiuservalue(_state, 1, 1);
 
@@ -1010,7 +1106,7 @@ namespace bLua
                             }
                         case UserDataRegistryEntry.PropertyEntry.Type.Field:
                             {
-                                //get the iuservalue for the userdata onto the stack.
+                                // Get the iuservalue for the userdata onto the stack.
                                 LuaLibAPI.lua_checkstack(_state, 1);
                                 LuaLibAPI.lua_getiuservalue(_state, 1, 1);
                                 int instanceIndex = Lua.PopInteger(mainThreadInstance);

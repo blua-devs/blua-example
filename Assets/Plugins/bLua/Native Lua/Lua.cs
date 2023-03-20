@@ -157,6 +157,52 @@ namespace bLua.NativeLua
             LuaLibAPI.lua_pushcclosure(_instance.state, Marshal.GetFunctionPointerForDelegate(_fn), _upvalues.Length);
         }
 
+        public static void PushClosure<T>(bLuaInstance _instance, T _func) where T : MulticastDelegate
+        {
+            MethodInfo methodInfo = _func.Method;
+
+            ParameterInfo[] methodParams = methodInfo.GetParameters();
+            MethodCallInfo.ParamType[] argTypes = new MethodCallInfo.ParamType[methodParams.Length];
+            object[] defaultArgs = new object[methodParams.Length];
+            for (int i = 0; i != methodParams.Length; ++i)
+            {
+                argTypes[i] = bLuaUserData.SystemTypeToParamType(methodParams[i].ParameterType);
+                if (i == methodParams.Length - 1 && methodParams[i].GetCustomAttribute(typeof(ParamArrayAttribute)) != null)
+                {
+                    argTypes[i] = MethodCallInfo.ParamType.Params;
+                }
+
+                if (methodParams[i].HasDefaultValue)
+                {
+                    defaultArgs[i] = methodParams[i].DefaultValue;
+                }
+                else if (argTypes[i] == MethodCallInfo.ParamType.LuaValue)
+                {
+                    defaultArgs[i] = bLuaValue.Nil;
+                }
+                else
+                {
+                    defaultArgs[i] = null;
+                }
+            }
+
+            LuaCFunction fn = bLuaInstance.CallDelegate;
+            bLuaValue[] upvalues = new bLuaValue[1] { bLuaValue.CreateNumber(_instance, _instance.s_methods.Count) };
+
+            DelegateCallInfo methodCallInfo = new DelegateCallInfo()
+            {
+                methodInfo = methodInfo,
+                returnType = bLuaUserData.SystemTypeToParamType(methodInfo.ReturnType),
+                argTypes = argTypes,
+                defaultArgs = defaultArgs,
+                closure = bLuaValue.CreateClosure(_instance, fn, upvalues),
+                multicastDelegate = _func
+            };
+            _instance.s_methods.Add(methodCallInfo);
+
+            PushClosure(_instance, fn, upvalues);
+        }
+
         public static void PushNewTable(bLuaInstance _instance, int _reserveArray = 0, int _reserveTable = 0)
         {
             LuaLibAPI.lua_checkstack(_instance.state, 1);
@@ -213,6 +259,10 @@ namespace bLua.NativeLua
             else if (_object is Action)
             {
                 LuaPushCFunction(_instance, _object as Action);
+            }
+            else if (_object is MulticastDelegate) // Func<>
+            {
+                PushClosure(_instance, _object as MulticastDelegate);
             }
             else
             {

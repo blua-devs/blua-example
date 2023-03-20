@@ -583,8 +583,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   runCodeOnStart: 1
   chunkName: default_component1
-  code: "function Test()\n\tblua.print(\"my name is \" .. gameObject.name)\n\tgameObject.name
-    = \"New Name\"\n\tblua.print(\"my name is \" .. gameObject.name)\nend\nTest()"
+  code: "function Test()\n\tblua.print(\"cube name is \" .. gameObject.name)\n\tblua.print(\"scene
+    is \" .. GetSceneName())\nend\nTest()"
 --- !u!1001 &4686878184624808642
 PrefabInstance:
   m_ObjectHideFlags: 0
