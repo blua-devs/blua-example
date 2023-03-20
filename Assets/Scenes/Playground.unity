@@ -371,7 +371,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   runCodeOnStart: 1
   chunkName: default_component2
-  code: "str = \"running the same function name as the other cube\"\nfunction Test()\n\tblua.print(str)\nend\nTest()"
+  code: "str = \"running the same function name as the other cube\"\nfunction Test()\n\tprint(str)\nend\nTest()"
 --- !u!4 &1276727480
 Transform:
   m_ObjectHideFlags: 0
@@ -583,8 +583,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   runCodeOnStart: 1
   chunkName: default_component1
-  code: "function Test()\n\tblua.print(\"cube name is \" .. gameObject.name)\n\tblua.print(\"scene
-    is \" .. GetSceneName())\nend\nTest()"
+  code: "function Test()\n\tprint(\"cube name is \" .. gameObject.name)\nend\nTest()"
 --- !u!1001 &4686878184624808642
 PrefabInstance:
   m_ObjectHideFlags: 0

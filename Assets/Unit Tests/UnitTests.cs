@@ -339,21 +339,21 @@ public class UnitTests : MonoBehaviour
 
         instance.ExecBuffer("test_macros",
             @"function testMacros(x)
-                blua.print('I print first')
+                print('I print first')
                 delay(2, function()
-                    blua.print('I print third')
+                    print('I print third')
                 end)
                 spawn(function()
                     printStringAfter('I print second', 1)
                 end)
                 wait(x)
-                blua.print('I print last')
-                blua.print('Finished Thread Macros')
+                print('I print last')
+                print('Finished Thread Macros')
             end
 
             function printStringAfter(s, t)
                 wait(t)
-                blua.print(s)
+                print(s)
             end");
 
         using (bLuaValue fn = instance.GetGlobal("testMacros"))

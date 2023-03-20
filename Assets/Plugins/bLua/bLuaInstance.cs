@@ -60,9 +60,11 @@ namespace bLua
         /// programs do not crash) and therefore can compromise otherwise secure code." </remarks>
         /// <summary> The Debug Library (https://www.lua.org/manual/5.4/manual.html#6.10). </summary>
         Debug = 512,
-        /// <summary> Includes `wait(t)`, `spawn(fn)`, and `delay(t, fn)` functions that can be used for better threading and coroutine control in Lua. NOTE: 
+        /// <summary> Includes `wait(t)`, `spawn(fn)`, and `delay(t, fn)` function(s) that can be used for better threading and coroutine control in Lua. NOTE: 
         /// Feature.Coroutines needs to be enabled for this feature to work. </summary>
-        ThreadMacros = 1024
+        ThreadMacros = 1024,
+        /// <summary> Includes `print(s)` function(s) as globals. </summary>
+        HelperMacros = 2048,
     }
 
     /// <summary> Sandboxes are groupings of features that let you select premade feature lists for your bLua environment. </summary>
@@ -82,7 +84,8 @@ namespace bLua
             | Feature.IO
             | Feature.OS
             | Feature.Debug
-            | Feature.ThreadMacros,
+            | Feature.ThreadMacros
+            | Feature.HelperMacros,
         /// <remarks> WARNING! Some of these features include developer warnings, please review the remarks on individual features. </remarks>
         /// <summary> Includes most Lua and bLua features, specifically ones that might be used commonly in modding. </summary>
         BasicModding = Feature.BasicLibrary
@@ -92,7 +95,8 @@ namespace bLua
             | Feature.Tables
             | Feature.MathLibrary
             | Feature.IO
-            | Feature.ThreadMacros,
+            | Feature.ThreadMacros
+            | Feature.HelperMacros,
         /// <summary> Includes basic Lua and bLua features, avoiding ones that could be potentially used maliciously. </summary>
         Safe = Feature.BasicLibrary
             | Feature.Coroutines
@@ -101,6 +105,7 @@ namespace bLua
             | Feature.Tables
             | Feature.MathLibrary
             | Feature.ThreadMacros
+            | Feature.HelperMacros
     }
 
     /// <summary> Contains settings for the bLua runtime. </summary>
@@ -147,6 +152,8 @@ namespace bLua
         }
 
         bLuaSettings settings = new bLuaSettings();
+
+        UnityEvent<string> OnPrint = new UnityEvent<string>();
 
         /// <summary> Contains the current Lua state (https://www.lua.org/manual/5.4/manual.html#lua_newstate). </summary>
         public IntPtr state { get; private set; }
@@ -225,6 +232,8 @@ namespace bLua
             SceneManager.activeSceneChanged -= OnActiveSceneChanged; // This can be done safely
             SceneManager.activeSceneChanged += OnActiveSceneChanged;
 
+            OnPrint.AddListener((s) => Debug.Log(s));
+
             // Create a new state for this instance
             state = LuaXLibAPI.luaL_newstate();
             instanceRegistry.Add(state, this);
@@ -262,9 +271,9 @@ namespace bLua
                     @"return function(fn, a, b, c, d, e, f, g, h)
                         local co = coroutine.create(fn)
                         local res, error = coroutine.resume(co, a, b, c, d, e, f, g, h)
-                        --blua.print('COROUTINE:: call co: %s -> %s -> %s', type(co), type(fn), coroutine.status(co))
+                        --print('COROUTINE:: call co: %s -> %s -> %s', type(co), type(fn), coroutine.status(co))
                         if not res then
-                            blua.print(string.format('error in co-routine: %s', error))
+                            print(string.format('error in co-routine: %s', error))
                         end
                         if coroutine.status(co) ~= 'dead' then
                             builtin_coroutines[#builtin_coroutines+1] = co
@@ -276,7 +285,7 @@ namespace bLua
                         for _,co in ipairs(builtin_coroutines) do
                             local res, error = coroutine.resume(co)
                             if not res then
-                                blua.print(string.format('error in co-routine: %s', error))
+                                print(string.format('error in co-routine: %s', error))
                             end
                             if coroutine.status(co) == 'dead' then
                                 allRunning = false
@@ -299,7 +308,7 @@ namespace bLua
                         for _,co in ipairs(builtin_coroutines) do
                             local res, error = coroutine.close(co)
                             if not res then
-                                blua.print(string.format('error closing co-routine: %s', error))
+                                print(string.format('error closing co-routine: %s', error))
                             end
                         end
                         builtin_coroutines = {}
@@ -368,7 +377,7 @@ namespace bLua
                         local co = coroutine.create(fn)
                         local res, error = coroutine.resume(co, a, b, c, d, e, f, g, h)
                         if not res then
-                            blua.print(string.format('error in co-routine spawn: %s', error))
+                            print(string.format('error in co-routine spawn: %s', error))
                         end
                         if coroutine.status(co) ~= 'dead' then
                             builtin_coroutines[#builtin_coroutines+1] = co
@@ -381,6 +390,11 @@ namespace bLua
                             fn()
                         end)
                     end");
+            }
+
+            if (FeatureEnabled(Feature.HelperMacros))
+            {
+                SetGlobal<Action<string>>("print", (s) => OnPrint.Invoke(s));
             }
             #endregion // Feature Handling
 
@@ -579,16 +593,10 @@ namespace bLua
             return result;
         }
 
-        public void SetGlobal(string _key, bLuaValue _value)
+        public void SetGlobal<T>(string _key, T _object)
         {
-            Lua.PushStack(this, _value);
+            Lua.PushOntoStack(this, _object);
             LuaLibAPI.lua_setglobal(state, _key);
-        }
-
-        public void SetGlobal(string _key, object _userDataObject)
-        {
-            bLuaValue v = bLuaValue.CreateUserData(this, _userDataObject);
-            SetGlobal(_key, v);
         }
         #endregion // Globals
 

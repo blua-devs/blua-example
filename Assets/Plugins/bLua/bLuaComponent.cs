@@ -51,11 +51,6 @@ public class bLuaComponent : MonoBehaviour
     string code;
 
 
-    private void Awake()
-    {
-
-    }
-
     private void Start()
     {
         if (runCodeOnStart)
@@ -76,12 +71,14 @@ public class bLuaComponent : MonoBehaviour
     {
         if (!ranCode)
         {
+            // Register any userdata that is needed
             instance.RegisterUserData(typeof(bLuaGameObject));
 
+            // Setup the global environment with any properties and functions we want
             bLuaValue env = bLuaValue.CreateTable(instance);
             env.Set("gameObject", new bLuaGameObject(this.gameObject));
-            env.Set<string, Func<string>>("GetSceneName", () => { return UnityEngine.SceneManagement.SceneManager.GetActiveScene().name; });
 
+            // Run the code
             instance.DoBuffer(chunkName, code, env);
             ranCode = true;
         }

@@ -53,11 +53,6 @@ namespace bLua.NativeLua
 
 
         #region Miscellaneous
-        public static LuaCFunction WrapLambda(Action _action)
-        {
-            return (IntPtr l) => { _action(); return 0; };
-        }
-
         public static IntPtr GetMainThread(IntPtr _state)
         {
             LuaLibAPI.lua_rawgeti(_state, LUA_REGISTRYINDEX, LUA_RIDX_MAINTHREAD);
@@ -140,11 +135,6 @@ namespace bLua.NativeLua
         public static void LuaPushCFunction(bLuaInstance _instance, LuaCFunction _fn)
         {
             LuaLibAPI.lua_pushcclosure(_instance.state, Marshal.GetFunctionPointerForDelegate(_fn), 0);
-        }
-
-        public static void LuaPushCFunction(bLuaInstance _instance, Action _action)
-        {
-            LuaPushCFunction(_instance, WrapLambda(_action));
         }
 
         public static void PushClosure(bLuaInstance _instance, LuaCFunction _fn, bLuaValue[] _upvalues)
@@ -256,11 +246,7 @@ namespace bLua.NativeLua
             {
                 LuaPushCFunction(_instance, _object as LuaCFunction);
             }
-            else if (_object is Action)
-            {
-                LuaPushCFunction(_instance, _object as Action);
-            }
-            else if (_object is MulticastDelegate) // Func<>
+            else if (_object is MulticastDelegate) // Func<> and Action<>
             {
                 PushClosure(_instance, _object as MulticastDelegate);
             }
