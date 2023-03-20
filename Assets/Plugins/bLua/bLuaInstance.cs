@@ -703,7 +703,7 @@ namespace bLua
 
                 foreach (var arg in _args)
                 {
-                    Lua.PushObjectOntoStack(this, arg);
+                    Lua.PushOntoStack(this, arg);
                 }
 
                 int result;

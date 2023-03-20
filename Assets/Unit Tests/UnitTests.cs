@@ -364,7 +364,7 @@ public class UnitTests : MonoBehaviour
 
     public static int TestCFunction(IntPtr state)
     {
-        bLua.NativeLua.Lua.PushObjectOntoStack(bLuaInstance.GetInstanceByState(bLua.NativeLua.Lua.GetMainThread(state)), 5);
+        bLua.NativeLua.Lua.PushOntoStack(bLuaInstance.GetInstanceByState(bLua.NativeLua.Lua.GetMainThread(state)), 5);
         return 1;
     }
 }
