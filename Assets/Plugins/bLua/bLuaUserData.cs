@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -21,6 +22,7 @@ namespace bLua
 
     public class UserDataRegistryEntry
     {
+        public string name;
         public bLuaValue metatable;
 
         public class PropertyEntry
@@ -251,11 +253,24 @@ namespace bLua
 
         public static void RegisterAssembly(bLuaInstance _instance, Assembly _assembly)
         {
+            List<TypeInfo> registerOrder = new List<TypeInfo>();
             foreach (TypeInfo t in _assembly.DefinedTypes)
             {
-                if (t.IsClass && t.GetCustomAttribute(typeof(bLuaUserDataAttribute)) != null) {
-                    Register(_instance, t);
+                if (t.IsClass && t.GetCustomAttribute(typeof(bLuaUserDataAttribute)) != null)
+                {
+                    // If it's not an extension type, try to register it first
+                    if (!t.IsClass || !t.IsAbstract || !t.IsSealed)
+                    {
+                        registerOrder.Insert(0, t);
+                        continue;
+                    }
+
+                    registerOrder.Add(t);
                 }
+            }
+            foreach (TypeInfo t in registerOrder)
+            {
+                Register(_instance, t);
             }
         }
 
@@ -264,6 +279,13 @@ namespace bLua
             if (_instance.s_typenameToEntryIndex.ContainsKey(_type.Name))
             {
                 // Can't register the same type multiple times.
+                return;
+            }
+
+            // If it's a static class, we treat is as an extension methods library
+            if (_type.IsClass && _type.IsAbstract && _type.IsSealed)
+            {
+                RegisterExtensionType(_instance, _type);
                 return;
             }
 
@@ -283,6 +305,7 @@ namespace bLua
 
             UserDataRegistryEntry entry = new UserDataRegistryEntry()
             {
+                name = _type.Name,
                 properties = baseProperties,
             };
             entry.metatable = Lua.NewMetaTable(_instance, _type.Name);
@@ -411,6 +434,80 @@ namespace bLua
                     fieldInfo = fieldInfo,
                     fieldType = returnType,
                 });
+            }
+        }
+
+        public static void RegisterExtensionType(bLuaInstance _instance, Type _type)
+        {
+            if (!_type.IsClass || !_type.IsAbstract || !_type.IsSealed)
+            {
+                _instance.Error($"Type {_type.Name} is not a static class so it can't be registered as an extension type. Add static to its definition.");
+                return;
+            }
+
+            MethodInfo[] methods = _type.GetMethods(BindingFlags.DeclaredOnly | BindingFlags.Static | BindingFlags.Public);
+            foreach (MethodInfo methodInfo in methods)
+            {
+                Attribute hiddenAttr = methodInfo.GetCustomAttribute(typeof(bLuaHiddenAttribute));
+                if (hiddenAttr != null)
+                {
+                    continue;
+                }
+
+                ParameterInfo[] methodParams = methodInfo.GetParameters();
+
+                // If there are 0 parameters, then this isn't an extension method. The first parameter should be of the type that is being extended
+                if (methodParams.Length == 0)
+                {
+                    continue;
+                }
+
+                MethodCallInfo.ParamType[] argTypes = new MethodCallInfo.ParamType[methodParams.Length];
+                object[] defaultArgs = new object[methodParams.Length];
+                for (int i = 0; i != methodParams.Length; ++i)
+                {
+                    argTypes[i] = SystemTypeToParamType(methodParams[i].ParameterType);
+                    if (i == methodParams.Length - 1 && methodParams[i].GetCustomAttribute(typeof(ParamArrayAttribute)) != null)
+                    {
+                        argTypes[i] = MethodCallInfo.ParamType.Params;
+                    }
+
+                    if (methodParams[i].HasDefaultValue)
+                    {
+                        defaultArgs[i] = methodParams[i].DefaultValue;
+                    }
+                    else if (argTypes[i] == MethodCallInfo.ParamType.LuaValue)
+                    {
+                        defaultArgs[i] = bLuaValue.Nil;
+                    }
+                    else
+                    {
+                        defaultArgs[i] = null;
+                    }
+                }
+
+                MethodCallInfo.ParamType returnType = SystemTypeToParamType(methodInfo.ReturnType);
+
+                UserDataRegistryEntry entry = _instance.s_entries.Find(d => d.name == methodParams[0].ParameterType.Name);
+                if (entry != null)
+                {
+                    entry.properties[methodInfo.Name] = new UserDataRegistryEntry.PropertyEntry()
+                    {
+                        propertyType = UserDataRegistryEntry.PropertyEntry.Type.Method,
+                        index = _instance.s_methods.Count,
+                    };
+
+                    LuaCFunction fn = bLuaInstance.CallStaticUserDataExtensionFunction;
+
+                    _instance.s_methods.Add(new MethodCallInfo()
+                    {
+                        methodInfo = methodInfo,
+                        returnType = returnType,
+                        argTypes = argTypes,
+                        defaultArgs = defaultArgs,
+                        closure = bLuaValue.CreateClosure(_instance, fn, bLuaValue.CreateNumber(_instance, _instance.s_methods.Count)),
+                    });
+                }
             }
         }
 

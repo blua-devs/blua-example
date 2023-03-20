@@ -8,6 +8,7 @@ using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.SceneManagement;
 using bLua.NativeLua;
+using bLua.Internal;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -171,7 +172,6 @@ namespace bLua
         public List<PropertyCallInfo> s_properties = new List<PropertyCallInfo>();
         public List<FieldCallInfo> s_fields = new List<FieldCallInfo>();
 
-
         public List<UserDataRegistryEntry> s_entries = new List<UserDataRegistryEntry>();
         public Dictionary<string, int> s_typenameToEntryIndex = new Dictionary<string, int>();
         public bLuaValue _gc;
@@ -245,9 +245,9 @@ namespace bLua
                 bLuaUserData.RegisterAllAssemblies(this);
             }
 
-            // Setup the bLua Global Library
-            bLuaUserData.Register(this, typeof(bLuaGlobalLibrary));
-            SetGlobal("blua", bLuaValue.CreateUserData(this, new bLuaGlobalLibrary()));
+            // Setup the bLua Internal Library
+            bLuaUserData.Register(this, typeof(bLuaInternalLibrary));
+            SetGlobal("blua_internal", new bLuaInternalLibrary());
 
             #region Feature Handling
             if (FeatureEnabled(Feature.BasicLibrary))
@@ -367,8 +367,8 @@ namespace bLua
             {
                 DoBuffer("thread_macros",
                     @"function wait(t)
-                        local startTime = blua.time
-                        while blua.time < startTime + t do
+                        local startTime = blua_internal
+                        while blua_internal.time < startTime + t do
                             coroutine.yield()
                         end
                     end
@@ -1068,6 +1068,91 @@ namespace bLua
             }
         }
 
+        public static int CallStaticUserDataExtensionFunction(IntPtr _state)
+        {
+            IntPtr mainThreadState = Lua.GetMainThread(_state);
+            bLuaInstance mainThreadInstance = GetInstanceByState(mainThreadState);
+
+            var stateBack = mainThreadInstance.state;
+            try
+            {
+                mainThreadInstance.state = _state;
+
+                int n = LuaLibAPI.lua_tointegerx(_state, Lua.UpValueIndex(1), IntPtr.Zero);
+                MethodCallInfo info = mainThreadInstance.s_methods[n];
+
+                int stackSize = LuaLibAPI.lua_gettop(_state);
+
+                object[] parms = null;
+                int parmsIndex = 0;
+
+                int len = info.argTypes.Length;
+                if (len > 0 && info.argTypes[len - 1] == MethodCallInfo.ParamType.Params)
+                {
+                    len--;
+                    if (stackSize > len)
+                    {
+                        parms = new object[stackSize - len];
+                        parmsIndex = parms.Length - 1;
+                    }
+                }
+
+                object[] args = new object[info.argTypes.Length];
+                int argIndex = args.Length - 1;
+
+                if (parms != null)
+                {
+                    args[argIndex--] = parms;
+                }
+
+                while (argIndex > stackSize - 1)
+                {
+                    // Backfill any arguments with nulls.
+                    args[argIndex] = info.defaultArgs[argIndex];
+                    --argIndex;
+                }
+                while (stackSize - 1 > argIndex)
+                {
+                    if (parms != null)
+                    {
+                        parms[parmsIndex--] = Lua.PopStackIntoObject(mainThreadInstance);
+                    }
+                    else
+                    {
+                        Lua.PopStack(mainThreadInstance);
+                    }
+                    --stackSize;
+                }
+
+                while (stackSize > 0)
+                {
+                    args[argIndex] = bLuaUserData.PopStackIntoParamType(mainThreadInstance, info.argTypes[argIndex]);
+                    --stackSize;
+                    --argIndex;
+                }
+
+                object result = info.methodInfo.Invoke(null, args);
+
+                bLuaUserData.PushReturnTypeOntoStack(mainThreadInstance, info.returnType, result);
+                return 1;
+
+            }
+            catch (Exception e)
+            {
+                var ex = e;
+                while (ex.InnerException != null)
+                {
+                    ex = ex.InnerException;
+                }
+                mainThreadInstance.Error($"Error calling function: {ex.Message}", $"{ex.StackTrace}");
+                return 0;
+            }
+            finally
+            {
+                mainThreadInstance.state = stateBack;
+            }
+        }
+
         public static int IndexFunction(IntPtr _state)
         {
             IntPtr mainThreadState = Lua.GetMainThread(_state);
@@ -1259,6 +1344,13 @@ namespace bLua
         public void RegisterUserData(Type _type)
         {
             bLuaUserData.Register(this, _type);
+        }
+
+        /// <remarks> NOTE! You can simply use RegisterUserData on extension types instead if you'd like. It works the same. </remarks>
+        /// <summary> Registers a given static C# extension methods class so that the methods can be used by matchin Lua values and Lua userdata. </summary>
+        public void RegisterExtensionType(Type _type)
+        {
+            bLuaUserData.RegisterExtensionType(this, _type);
         }
         #endregion
     }

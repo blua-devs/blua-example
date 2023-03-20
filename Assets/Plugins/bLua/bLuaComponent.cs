@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using bLua;
+using bLua.ExampleUserData;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -34,7 +35,13 @@ public class bLuaComponentEditor : Editor
 
 public class bLuaComponent : MonoBehaviour
 {
-    public static bLuaInstance instance = new bLuaInstance();
+    public static bLuaInstance instance = new bLuaInstance(new bLuaSettings()
+    {
+        sandbox = Sandbox.Safe,
+        autoRegisterAllUserData = false,
+        tickBehavior =
+        bLuaSettings.TickBehavior.Manual
+    });
 
     /// <summary> When true, this bLuaComponent will run its code when Unity's Start event fires. If this is set to false, you will need to 
     /// tell the bLuaComponent when to run the code via RunCode(). </summary>
@@ -59,6 +66,14 @@ public class bLuaComponent : MonoBehaviour
         }
     }
 
+    private void Update()
+    {
+        if (ranCode)
+        {
+            instance.ManualTick();
+        }
+    }
+
 
     public void HotReload()
     {
@@ -73,9 +88,12 @@ public class bLuaComponent : MonoBehaviour
         {
             // Register any userdata that is needed
             instance.RegisterUserData(typeof(bLuaGameObject));
+            instance.RegisterUserData(typeof(bLuaGameObjectLibrary));
+            instance.RegisterUserData(typeof(bLuaGameObjectExtensionLibrary));
 
             // Setup the global environment with any properties and functions we want
             bLuaValue env = bLuaValue.CreateTable(instance);
+            env.Set("GameObject", new bLuaGameObjectLibrary());
             env.Set("gameObject", new bLuaGameObject(this.gameObject));
 
             // Run the code
