@@ -208,7 +208,7 @@ namespace bLua.NativeLua
                 PushStack(_instance, dynValue);
                 return;
             }
-            else if (_object.GetType().IsDefined(typeof(bLuaUserDataAttribute), false))
+            else if (bLuaUserData.IsRegistered(_instance, _object.GetType()))
             {
                 bLuaValue ud = bLuaValue.CreateUserData(_instance, _object);
                 Lua.PushStack(_instance, ud);

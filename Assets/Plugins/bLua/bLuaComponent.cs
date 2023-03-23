@@ -35,13 +35,7 @@ public class bLuaComponentEditor : Editor
 
 public class bLuaComponent : MonoBehaviour
 {
-    public static bLuaInstance instance = new bLuaInstance(new bLuaSettings()
-    {
-        sandbox = Sandbox.Safe,
-        autoRegisterAllUserData = false,
-        tickBehavior =
-        bLuaSettings.TickBehavior.Manual
-    });
+    public static bLuaInstance instance;
 
     /// <summary> When true, this bLuaComponent will run its code when Unity's Start event fires. If this is set to false, you will need to 
     /// tell the bLuaComponent when to run the code via RunCode(). </summary>
@@ -57,6 +51,19 @@ public class bLuaComponent : MonoBehaviour
     [TextArea(2, 512)]
     string code;
 
+
+    private void Awake()
+    {
+        if (instance == null)
+        {
+            instance = new bLuaInstance(new bLuaSettings()
+            {
+                sandbox = Sandbox.Safe,
+                tickBehavior = bLuaSettings.TickBehavior.Manual,
+                userDataBehavior = bLuaSettings.UserDataBehavior.AutoRegisterBLua
+            });
+        }
+    }
 
     private void Start()
     {
@@ -86,11 +93,6 @@ public class bLuaComponent : MonoBehaviour
     {
         if (!ranCode)
         {
-            // Register any userdata that is needed
-            instance.RegisterUserData(typeof(bLuaGameObject));
-            instance.RegisterUserData(typeof(bLuaGameObjectLibrary));
-            instance.RegisterUserData(typeof(bLuaGameObjectExtensionLibrary));
-
             // Setup the global environment with any properties and functions we want
             bLuaValue env = bLuaValue.CreateTable(instance);
             env.Set("GameObject", new bLuaGameObjectLibrary());

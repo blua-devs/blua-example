@@ -198,10 +198,11 @@ namespace bLua
                 Lua.PushNil(_instance);
                 return;
             }
+
             int typeIndex;
             if (_instance.s_typenameToEntryIndex.TryGetValue(_object.GetType().Name, out typeIndex) == false)
             {
-                _instance.Error($"Type {_object.GetType().Name} is not marked as a user data. Add [bLuaUserData] to its definition.");
+                _instance.Error($"Type {_object.GetType().Name} is not marked as a user data. Register it with `bLuaUserData.Register`, `bLuaInstance.RegisterUserData`, or add the [bLuaUserData] attribute and have your bLuaInstance auto register all bLuaUserData.");
                 Lua.PushNil(_instance);
                 return;
             }
@@ -243,49 +244,67 @@ namespace bLua
             _instance.s_liveObjects[objIndex] = _object;
         }
 
-        public static void RegisterAllAssemblies(bLuaInstance _instance)
+        public static bool IsBLuaUserData(Type _type)
+        {
+            return _type.GetCustomAttribute(typeof(bLuaUserDataAttribute)) != null;
+        }
+
+        public static bool IsRegistered(bLuaInstance _instance, Type _type)
+        {
+            return _instance.s_typenameToEntryIndex.ContainsKey(_type.Name);
+        }
+
+        static bool AreAllBaseTypesRegistered(bLuaInstance _instance, Type _type)
+        {
+            Type checkingType = _type;
+            while (checkingType != null && checkingType != checkingType.BaseType && checkingType.IsClass)
+            {
+                if (!IsRegistered(_instance, checkingType))
+                {
+                    return false;
+                }
+                checkingType = checkingType.BaseType;
+            }
+            return true;
+        }
+
+        /// <summary> Searches all assemblies for types marked with the [bLuaUserData] attribute and registers them to the given instance. </summary>
+        public static void RegisterAllBLuaUserData(bLuaInstance _instance)
         {
             foreach (Assembly asm in AppDomain.CurrentDomain.GetAssemblies())
             {
-                RegisterAssembly(_instance, asm);
+                RegisterAssemblyBLuaUserData(_instance, asm);
             }
         }
 
-        public static void RegisterAssembly(bLuaInstance _instance, Assembly _assembly)
+        static void RegisterAssemblyBLuaUserData(bLuaInstance _instance, Assembly _assembly)
         {
-            List<TypeInfo> registerOrder = new List<TypeInfo>();
             foreach (TypeInfo t in _assembly.DefinedTypes)
             {
-                if (t.IsClass && t.GetCustomAttribute(typeof(bLuaUserDataAttribute)) != null)
+                if (t.IsClass && IsBLuaUserData(t))
                 {
-                    // If it's not an extension type, try to register it first
-                    if (!t.IsClass || !t.IsAbstract || !t.IsSealed)
-                    {
-                        registerOrder.Insert(0, t);
-                        continue;
-                    }
-
-                    registerOrder.Add(t);
+                    Register(_instance, t);
                 }
-            }
-            foreach (TypeInfo t in registerOrder)
-            {
-                Register(_instance, t);
             }
         }
 
-        public static void Register(bLuaInstance _instance, Type _type)
+        /// <summary> Registers a type as Lua userdata. Does not require the [bLuaUserData] attribute unless specified. </summary>
+        public static void Register(bLuaInstance _instance, Type _type, bool _registerStatics = true)
         {
-            if (_instance.s_typenameToEntryIndex.ContainsKey(_type.Name))
+            if (_type == typeof(object))
             {
-                // Can't register the same type multiple times.
                 return;
             }
 
-            // If it's a static class, we treat is as an extension methods library
-            if (_type.IsClass && _type.IsAbstract && _type.IsSealed)
+            if (_type.IsClass && !IsBLuaUserData(_type))
             {
-                RegisterExtensionType(_instance, _type);
+                _instance.Error($"Type {_type.Name} is not marked as a user data. Add [bLuaUserData] to its definition. (If the class is unaccessible, it's recommended to make a wrapper around the type specifically for Lua usage.)");
+                return;
+            }
+
+            if (IsRegistered(_instance, _type))
+            {
+                // Can't register the same type multiple times.
                 return;
             }
 
@@ -293,10 +312,13 @@ namespace bLua
 
             if (_type.BaseType != null && _type.BaseType != _type)
             {
-                if (_type.BaseType.IsClass && _type.BaseType.GetCustomAttribute(typeof(bLuaUserDataAttribute)) != null)
+                if (_type.BaseType.IsClass && !IsRegistered(_instance, _type.BaseType))
                 {
-                    Register(_instance, _type.BaseType);
+                    Register(_instance, _type.BaseType, _registerStatics);
+                }
 
+                if (_instance.s_typenameToEntryIndex.ContainsKey(_type.BaseType.Name))
+                {
                     baseProperties = new Dictionary<string, UserDataRegistryEntry.PropertyEntry>(_instance.s_entries[_instance.s_typenameToEntryIndex[_type.BaseType.Name]].properties);
                 }
             }
@@ -315,9 +337,17 @@ namespace bLua
 
             _instance.s_typenameToEntryIndex[_type.Name] = typeIndex;
 
-            _instance.s_entries.Add(entry);
+            BindingFlags bindingFlags = BindingFlags.Public | BindingFlags.Instance;
+            if (!AreAllBaseTypesRegistered(_instance, _type))
+            {
+                bindingFlags |= BindingFlags.DeclaredOnly;
+            }
+            if (_registerStatics)
+            {
+                bindingFlags |= BindingFlags.Static;
+            }
 
-            MethodInfo[] methods = _type.GetMethods(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public);
+            MethodInfo[] methods = _type.GetMethods(bindingFlags);
             foreach (MethodInfo methodInfo in methods)
             {
                 Attribute hiddenAttr = methodInfo.GetCustomAttribute(typeof(bLuaHiddenAttribute));
@@ -330,9 +360,16 @@ namespace bLua
 
                 MethodCallInfo.ParamType[] argTypes = new MethodCallInfo.ParamType[methodParams.Length];
                 object[] defaultArgs = new object[methodParams.Length];
+                Tuple<bool, Type> failedParamRegister = new Tuple<bool, Type>(false, null);
                 for (int i = 0; i != methodParams.Length; ++i)
                 {
                     argTypes[i] = SystemTypeToParamType(methodParams[i].ParameterType);
+                    if (argTypes[i] == MethodCallInfo.ParamType.Void && methodParams[i].ParameterType != typeof(void))
+                    {
+                        failedParamRegister = new Tuple<bool, Type>(true, methodParams[i].ParameterType);
+                        break;
+                    }
+
                     if (i == methodParams.Length - 1 && methodParams[i].GetCustomAttribute(typeof(ParamArrayAttribute)) != null)
                     {
                         argTypes[i] = MethodCallInfo.ParamType.Params;
@@ -351,8 +388,18 @@ namespace bLua
                         defaultArgs[i] = null;
                     }
                 }
+                if (failedParamRegister.Item1)
+                {
+                    Debug.LogWarning($"Failed to register method {methodInfo.Name} on {_type.Name} because it has a parameter type ({failedParamRegister.Item2.Name}) that is not registered.");
+                    continue;
+                }
 
                 MethodCallInfo.ParamType returnType = SystemTypeToParamType(methodInfo.ReturnType);
+                if (returnType == MethodCallInfo.ParamType.Void && methodInfo.ReturnType != typeof(void))
+                {
+                    Debug.LogWarning($"Failed to register method {methodInfo.Name} on {_type.Name} because it returns a type ({methodInfo.ReturnType}) that is not registered.");
+                    continue;
+                }
 
                 entry.properties[methodInfo.Name] = new UserDataRegistryEntry.PropertyEntry()
                 {
@@ -380,7 +427,7 @@ namespace bLua
                 });
             }
 
-            PropertyInfo[] properties = _type.GetProperties(BindingFlags.DeclaredOnly | BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static);
+            PropertyInfo[] properties = _type.GetProperties(bindingFlags);
             foreach (PropertyInfo propertyInfo in properties)
             {
                 Attribute hiddenAttr = propertyInfo.GetCustomAttribute(typeof(bLuaHiddenAttribute));
@@ -392,6 +439,7 @@ namespace bLua
                 MethodCallInfo.ParamType returnType = SystemTypeToParamType(propertyInfo.PropertyType);
                 if (returnType == MethodCallInfo.ParamType.Void)
                 {
+                    Debug.LogWarning($"Failed to register property {propertyInfo.Name} on {_type.Name} because its type ({propertyInfo.PropertyType}) is not registered.");
                     continue;
                 }
 
@@ -408,7 +456,7 @@ namespace bLua
                 });
             }
 
-            FieldInfo[] fields = _type.GetFields(BindingFlags.DeclaredOnly | BindingFlags.Public | BindingFlags.Instance);
+            FieldInfo[] fields = _type.GetFields(bindingFlags);
             foreach (FieldInfo fieldInfo in fields)
             {
                 Attribute hiddenAttr = fieldInfo.GetCustomAttribute(typeof(bLuaHiddenAttribute));
@@ -420,6 +468,7 @@ namespace bLua
                 MethodCallInfo.ParamType returnType = SystemTypeToParamType(fieldInfo.FieldType);
                 if (returnType == MethodCallInfo.ParamType.Void)
                 {
+                    Debug.LogWarning($"Failed to register field {fieldInfo.Name} on {_type.Name} because its type ({fieldInfo.FieldType}) is not registered.");
                     continue;
                 }
 
@@ -435,80 +484,25 @@ namespace bLua
                     fieldType = returnType,
                 });
             }
+
+            _instance.s_entries.Add(entry);
         }
 
         public static void RegisterExtensionType(bLuaInstance _instance, Type _type)
         {
+            if (!IsBLuaUserData(_type))
+            {
+                _instance.Error($"Type {_type.Name} is not marked as a user data. Add [bLuaUserData] to its definition.");
+                return;
+            }
+
             if (!_type.IsClass || !_type.IsAbstract || !_type.IsSealed)
             {
                 _instance.Error($"Type {_type.Name} is not a static class so it can't be registered as an extension type. Add static to its definition.");
                 return;
             }
 
-            MethodInfo[] methods = _type.GetMethods(BindingFlags.DeclaredOnly | BindingFlags.Static | BindingFlags.Public);
-            foreach (MethodInfo methodInfo in methods)
-            {
-                Attribute hiddenAttr = methodInfo.GetCustomAttribute(typeof(bLuaHiddenAttribute));
-                if (hiddenAttr != null)
-                {
-                    continue;
-                }
-
-                ParameterInfo[] methodParams = methodInfo.GetParameters();
-
-                // If there are 0 parameters, then this isn't an extension method. The first parameter should be of the type that is being extended
-                if (methodParams.Length == 0)
-                {
-                    continue;
-                }
-
-                MethodCallInfo.ParamType[] argTypes = new MethodCallInfo.ParamType[methodParams.Length];
-                object[] defaultArgs = new object[methodParams.Length];
-                for (int i = 0; i != methodParams.Length; ++i)
-                {
-                    argTypes[i] = SystemTypeToParamType(methodParams[i].ParameterType);
-                    if (i == methodParams.Length - 1 && methodParams[i].GetCustomAttribute(typeof(ParamArrayAttribute)) != null)
-                    {
-                        argTypes[i] = MethodCallInfo.ParamType.Params;
-                    }
-
-                    if (methodParams[i].HasDefaultValue)
-                    {
-                        defaultArgs[i] = methodParams[i].DefaultValue;
-                    }
-                    else if (argTypes[i] == MethodCallInfo.ParamType.LuaValue)
-                    {
-                        defaultArgs[i] = bLuaValue.Nil;
-                    }
-                    else
-                    {
-                        defaultArgs[i] = null;
-                    }
-                }
-
-                MethodCallInfo.ParamType returnType = SystemTypeToParamType(methodInfo.ReturnType);
-
-                UserDataRegistryEntry entry = _instance.s_entries.Find(d => d.name == methodParams[0].ParameterType.Name);
-                if (entry != null)
-                {
-                    entry.properties[methodInfo.Name] = new UserDataRegistryEntry.PropertyEntry()
-                    {
-                        propertyType = UserDataRegistryEntry.PropertyEntry.Type.Method,
-                        index = _instance.s_methods.Count,
-                    };
-
-                    LuaCFunction fn = bLuaInstance.CallStaticUserDataExtensionFunction;
-
-                    _instance.s_methods.Add(new MethodCallInfo()
-                    {
-                        methodInfo = methodInfo,
-                        returnType = returnType,
-                        argTypes = argTypes,
-                        defaultArgs = defaultArgs,
-                        closure = bLuaValue.CreateClosure(_instance, fn, bLuaValue.CreateNumber(_instance, _instance.s_methods.Count)),
-                    });
-                }
-            }
+            // TODO:
         }
 
         public static object PopStackIntoParamType(bLuaInstance _instance, MethodCallInfo.ParamType _paramType)
@@ -565,7 +559,7 @@ namespace bLua
             {
                 return MethodCallInfo.ParamType.LuaValue;
             }
-            else if (_type.IsClass && _type.GetCustomAttribute(typeof(bLuaUserDataAttribute)) != null)
+            else if (_type.IsClass && IsBLuaUserData(_type))
             {
                 return MethodCallInfo.ParamType.UserDataClass;
             }

@@ -125,15 +125,22 @@ namespace bLua
             TickOnlyWhenCoroutinesActive
         }
 
-        /// <summary> When true, bLua scripts will not tick automatically. You should call ManualTick() instead. </summary>
+        /// <summary> Controls the ticking behavior. Read summaries of TickBehavior options for more information. </summary>
         public TickBehavior tickBehavior = TickBehavior.AlwaysTick;
 
         /// <summary> The millisecond delay between bLua ticks. </summary>
         public int tickInterval = 10; // 10 = 100 ticks per second
 
-        /// <summary> When true, all user data will be registered with the bLua instance these settings are for. If this is false, you can
-        /// still manually register all assemblies or individual user data classes as needed. </summary>
-        public bool autoRegisterAllUserData = true;
+        public enum UserDataBehavior
+        {
+            /// <summary> Do not automatically register any types. </summary>
+            None,
+            /// <summary> Upon initializing, register all types with the [bLuaUserData] attribute as Lua userdata. </summary>
+            AutoRegisterBLua
+        }
+
+        /// <summary> Controls user data behavior. Read summaries of UserDataBehavior options for more information. </summary>
+        public UserDataBehavior userDataBehavior = UserDataBehavior.AutoRegisterBLua;
     }
 
     public class bLuaInstance : IDisposable
@@ -152,7 +159,7 @@ namespace bLua
             return instanceRegistry.Count;
         }
 
-        bLuaSettings settings = new bLuaSettings();
+        public readonly bLuaSettings settings = new bLuaSettings();
 
         UnityEvent<string> OnPrint = new UnityEvent<string>();
 
@@ -240,9 +247,9 @@ namespace bLua
 
             _gc = bLuaValue.CreateFunction(this, GCFunction);
             // Initialize all bLua User Data
-            if (settings.autoRegisterAllUserData)
+            if (settings.userDataBehavior.HasFlag(bLuaSettings.UserDataBehavior.AutoRegisterBLua))
             {
-                bLuaUserData.RegisterAllAssemblies(this);
+                bLuaUserData.RegisterAllBLuaUserData(this);
             }
 
             // Setup the bLua Internal Library
@@ -1202,6 +1209,7 @@ namespace bLua
                                 // Get the iuservalue for the userdata onto the stack.
                                 LuaLibAPI.lua_checkstack(_state, 1);
                                 LuaLibAPI.lua_getiuservalue(_state, 1, 1);
+
                                 int instanceIndex = Lua.PopInteger(mainThreadInstance);
                                 object obj = mainThreadInstance.s_liveObjects[instanceIndex];
 
@@ -1290,7 +1298,11 @@ namespace bLua
                         fieldInfo.fieldInfo.SetValue(obj, arg);
                         return 0;
                     }
-
+                    else
+                    {
+                        mainThreadInstance.Error($"Could not set property {str} (propertType unexpected)");
+                        return 0;
+                    }
                 }
 
                 mainThreadInstance.Error($"Could not set property {str}");
@@ -1329,18 +1341,13 @@ namespace bLua
 
         #region Userdata
         /// <summary> Registers all C# types in all assemblies with the [bLuaUserData] attribute as Lua userdata on this particular instance. </summary>
-        public void RegisterAllAssembliesUserData()
+        public void RegisterAllBLuaUserData()
         {
-            bLuaUserData.RegisterAllAssemblies(this);
+            bLuaUserData.RegisterAllBLuaUserData(this);
         }
 
-        /// <summary> Registers all C# types in a given assembly with the [bLuaUserData] attribute as Lua userdata on this particular instance. </summary>
-        public void RegisterAssemblyUserData(System.Reflection.Assembly _assembly)
-        {
-            bLuaUserData.RegisterAssembly(this, _assembly);
-        }
-
-        /// <summary> Registers a given C# type as Lua userdata on this particular instance. </summary>
+        /// <summary> Registers a given C# type as Lua userdata on this particular instance. Does not require the [bLuaUserData] attribute. See `bLuaUserData.Register`
+        /// for a more detailed userdata type register function. </summary>
         public void RegisterUserData(Type _type)
         {
             bLuaUserData.Register(this, _type);
