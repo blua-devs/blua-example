@@ -317,7 +317,7 @@ public class UnitTests : MonoBehaviour
         instance.ExecBuffer("test_coroutine",
             @"function testYield(x)
                 for i=1,x do
-                    blua.print('test coroutine ' .. i)
+                    print('test coroutine ' .. i)
                     coroutine.yield()
                 end
             end");

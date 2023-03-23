@@ -374,7 +374,7 @@ namespace bLua
             {
                 DoBuffer("thread_macros",
                     @"function wait(t)
-                        local startTime = blua_internal
+                        local startTime = blua_internal.time
                         while blua_internal.time < startTime + t do
                             coroutine.yield()
                         end
