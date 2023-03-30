@@ -8,7 +8,6 @@ using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.SceneManagement;
 using bLua.NativeLua;
-using bLua.Internal;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -252,10 +251,6 @@ namespace bLua
                 bLuaUserData.RegisterAllBLuaUserData(this);
             }
 
-            // Setup the bLua Internal Library
-            bLuaUserData.Register(this, typeof(bLuaInternalLibrary));
-            SetGlobal("blua_internal", new bLuaInternalLibrary());
-
             #region Feature Handling
             if (FeatureEnabled(Feature.BasicLibrary))
             {
@@ -264,6 +259,19 @@ namespace bLua
 
             if (FeatureEnabled(Feature.Coroutines))
             {
+                SetGlobal<Func<float>>("blua_internal_time", () => {
+#if UNITY_EDITOR
+                    if (!Application.isPlaying)
+                    {
+                        return (float)EditorApplication.timeSinceStartup - Time.time;
+                    }
+
+                    return Time.time;
+#else
+                return Time.time;
+#endif
+                });
+
                 LuaLibAPI.luaopen_coroutine(state);
                 LuaLibAPI.lua_setglobal(state, "coroutine");
 
@@ -374,8 +382,8 @@ namespace bLua
             {
                 DoBuffer("thread_macros",
                     @"function wait(t)
-                        local startTime = blua_internal.time
-                        while blua_internal.time < startTime + t do
+                        local startTime = blua_internal_time()
+                        while blua_internal_time() < startTime + t do
                             coroutine.yield()
                         end
                     end
