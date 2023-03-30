@@ -360,15 +360,9 @@ namespace bLua
 
                 MethodCallInfo.ParamType[] argTypes = new MethodCallInfo.ParamType[methodParams.Length];
                 object[] defaultArgs = new object[methodParams.Length];
-                Tuple<bool, Type> failedParamRegister = new Tuple<bool, Type>(false, null);
                 for (int i = 0; i != methodParams.Length; ++i)
                 {
                     argTypes[i] = SystemTypeToParamType(methodParams[i].ParameterType);
-                    if (argTypes[i] == MethodCallInfo.ParamType.Void && methodParams[i].ParameterType != typeof(void))
-                    {
-                        failedParamRegister = new Tuple<bool, Type>(true, methodParams[i].ParameterType);
-                        break;
-                    }
 
                     if (i == methodParams.Length - 1 && methodParams[i].GetCustomAttribute(typeof(ParamArrayAttribute)) != null)
                     {
@@ -388,18 +382,8 @@ namespace bLua
                         defaultArgs[i] = null;
                     }
                 }
-                if (failedParamRegister.Item1)
-                {
-                    Debug.LogWarning($"Failed to register method {methodInfo.Name} on {_type.Name} because it has a parameter type ({failedParamRegister.Item2.Name}) that is not registered.");
-                    continue;
-                }
 
                 MethodCallInfo.ParamType returnType = SystemTypeToParamType(methodInfo.ReturnType);
-                if (returnType == MethodCallInfo.ParamType.Void && methodInfo.ReturnType != typeof(void))
-                {
-                    Debug.LogWarning($"Failed to register method {methodInfo.Name} on {_type.Name} because it returns a type ({methodInfo.ReturnType}) that is not registered.");
-                    continue;
-                }
 
                 entry.properties[methodInfo.Name] = new UserDataRegistryEntry.PropertyEntry()
                 {
