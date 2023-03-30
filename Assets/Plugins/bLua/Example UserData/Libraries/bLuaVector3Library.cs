@@ -1,10 +1,11 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
 namespace bLua.ExampleUserData
 {
-    [bLuaUserData]
+    [bLuaUserData(reliantUserData = new Type[1] { typeof(Vector3) })]
     public class bLuaVector3Library
     {
         public static Vector3 zero

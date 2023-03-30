@@ -94,13 +94,7 @@ public class bLuaComponent : MonoBehaviour
         if (!ranCode)
         {
             // Register all of the types we intend on using
-            instance.RegisterUserData(typeof(Vector3));
-            instance.RegisterUserData(typeof(bLuaGameObject));
-            instance.RegisterUserData(typeof(bLuaVector3Library));
-            instance.RegisterUserData(typeof(bLuaGameObjectLibrary));
-
-            // Register any extension methods for the types we've already registered
-            instance.RegisterUserData(typeof(bLuaVector3ExtensionLibrary));
+            instance.RegisterAllBLuaUserData();
 
             // Setup the global environment with any properties and functions we want
             bLuaValue env = bLuaValue.CreateTable(instance);

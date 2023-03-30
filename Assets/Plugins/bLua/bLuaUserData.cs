@@ -18,7 +18,10 @@ namespace bLua
     [AttributeUsage(AttributeTargets.Class)]
     public class bLuaUserDataAttribute : Attribute
     {
-
+        /// <summary> Any types added to this array will be registered just before this type is, making sure you don't accidentally
+        /// register a userdata that uses X type before X is registered (ex. bLuaGameObject might be reliant on Vector3
+        /// because of the position property). </summary>
+        public Type[] reliantUserData;
     }
 
     public class UserDataRegistryEntry
@@ -324,6 +327,17 @@ namespace bLua
                 }
             }
 
+            bLuaUserDataAttribute attribute = _type.GetCustomAttribute<bLuaUserDataAttribute>();
+            if (attribute != null
+                && attribute.reliantUserData != null
+                && attribute.reliantUserData.Length > 0)
+            {
+                for (int i = 0; i < attribute.reliantUserData.Length; i++)
+                {
+                    Register(_instance, attribute.reliantUserData[i]);
+                }
+            }
+
             int typeIndex = _instance.s_entries.Count;
 
             UserDataRegistryEntry entry = new UserDataRegistryEntry()
@@ -356,7 +370,7 @@ namespace bLua
                 ParameterInfo[] methodParams = methodInfo.GetParameters();
 
                 bool isExtensionMethod = methodInfo.IsDefined(typeof(ExtensionAttribute), true);
-                if (isExtensionMethod && (methodParams.Length < 1 || !IsRegistered(_instance, methodParams[0].ParameterType)))
+                if (isExtensionMethod && !IsRegistered(_instance, methodParams[0].ParameterType))
                 {
                     Debug.LogError($"Tried to register extension method ({methodInfo.Name}) but the type it extends ({methodParams[0].ParameterType.Name}) isn't registered.");
                     continue;

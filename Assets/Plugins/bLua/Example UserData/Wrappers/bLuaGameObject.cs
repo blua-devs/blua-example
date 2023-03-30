@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -5,7 +6,7 @@ using bLua;
 
 namespace bLua.ExampleUserData
 {
-    [bLuaUserData]
+    [bLuaUserData(reliantUserData = new Type[1] { typeof(Vector3) })]
     public class bLuaGameObject
     {
         [bLuaHidden]
