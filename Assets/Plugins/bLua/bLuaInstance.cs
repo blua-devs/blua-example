@@ -131,16 +131,16 @@ namespace bLua
         /// <summary> The millisecond delay between bLua ticks. </summary>
         public int tickInterval = 10; // 10 = 100 ticks per second
 
-        public enum UserDataBehavior
+        public enum AutoRegisterTypes
         {
             /// <summary> Do not automatically register any types. </summary>
             None,
             /// <summary> Upon initializing, register all types with the [bLuaUserData] attribute as Lua userdata. </summary>
-            AutoRegisterBLua
+            BLua
         }
 
         /// <summary> Controls user data behavior. Read summaries of UserDataBehavior options for more information. </summary>
-        public UserDataBehavior userDataBehavior = UserDataBehavior.AutoRegisterBLua;
+        public AutoRegisterTypes autoRegisterTypes = AutoRegisterTypes.BLua;
     }
 
     public class bLuaInstance : IDisposable
@@ -246,8 +246,8 @@ namespace bLua
             instanceRegistry.Add(state, this);
 
             _gc = bLuaValue.CreateFunction(this, GCFunction);
-            // Initialize all bLua User Data
-            if (settings.userDataBehavior.HasFlag(bLuaSettings.UserDataBehavior.AutoRegisterBLua))
+            // Initialize all bLua userdata
+            if (settings.autoRegisterTypes.HasFlag(bLuaSettings.AutoRegisterTypes.BLua))
             {
                 bLuaUserData.RegisterAllBLuaUserData(this);
             }

@@ -60,7 +60,7 @@ public class bLuaComponent : MonoBehaviour
             {
                 sandbox = Sandbox.Safe,
                 tickBehavior = bLuaSettings.TickBehavior.Manual,
-                userDataBehavior = bLuaSettings.UserDataBehavior.AutoRegisterBLua
+                autoRegisterTypes = bLuaSettings.AutoRegisterTypes.None
             });
         }
     }
