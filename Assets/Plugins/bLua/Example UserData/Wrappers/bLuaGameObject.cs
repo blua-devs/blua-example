@@ -56,5 +56,24 @@ namespace bLua.ExampleUserData
         {
             __gameObject = _gameObject;
         }
+
+
+        public bLuaGameObject Duplicate()
+        {
+            if (__gameObject != null)
+            {
+                GameObject duplicatedGameObject = MonoBehaviour.Instantiate(__gameObject);
+                return new bLuaGameObject(duplicatedGameObject);
+            }
+            return null;
+        }
+
+        public void Destroy()
+        {
+            if (__gameObject != null)
+            {
+                MonoBehaviour.Destroy(__gameObject);
+            }
+        }
     }
 } // bLua.ExampleUserData namespace

@@ -93,8 +93,12 @@ public class bLuaComponent : MonoBehaviour
     {
         if (!ranCode)
         {
+            instance.RegisterUserData(typeof(Vector3));
+            instance.RegisterAllBLuaUserData();
+
             // Setup the global environment with any properties and functions we want
             bLuaValue env = bLuaValue.CreateTable(instance);
+            env.Set("Vector3", new bLuaVector3Library());
             env.Set("GameObject", new bLuaGameObjectLibrary());
             env.Set("gameObject", new bLuaGameObject(this.gameObject));
 

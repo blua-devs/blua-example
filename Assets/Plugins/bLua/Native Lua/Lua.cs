@@ -156,7 +156,7 @@ namespace bLua.NativeLua
             object[] defaultArgs = new object[methodParams.Length];
             for (int i = 0; i != methodParams.Length; ++i)
             {
-                argTypes[i] = bLuaUserData.SystemTypeToParamType(methodParams[i].ParameterType);
+                argTypes[i] = bLuaUserData.SystemTypeToParamType(_instance, methodParams[i].ParameterType);
                 if (i == methodParams.Length - 1 && methodParams[i].GetCustomAttribute(typeof(ParamArrayAttribute)) != null)
                 {
                     argTypes[i] = MethodCallInfo.ParamType.Params;
@@ -182,7 +182,7 @@ namespace bLua.NativeLua
             DelegateCallInfo methodCallInfo = new DelegateCallInfo()
             {
                 methodInfo = methodInfo,
-                returnType = bLuaUserData.SystemTypeToParamType(methodInfo.ReturnType),
+                returnType = bLuaUserData.SystemTypeToParamType(_instance, methodInfo.ReturnType),
                 argTypes = argTypes,
                 defaultArgs = defaultArgs,
                 closure = bLuaValue.CreateClosure(_instance, fn, upvalues),

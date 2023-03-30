@@ -965,7 +965,6 @@ namespace bLua
                     return 0;
                 }
                 int liveObjectIndex = LuaLibAPI.lua_tointegerx(_state, -1, IntPtr.Zero);
-
                 object obj = mainThreadInstance.s_liveObjects[liveObjectIndex];
 
                 object result = info.methodInfo.Invoke(obj, args);
@@ -1049,91 +1048,7 @@ namespace bLua
                 while (stackSize > 0)
                 {
                     args[argIndex] = bLuaUserData.PopStackIntoParamType(mainThreadInstance, info.argTypes[argIndex]);
-                    --stackSize;
-                    --argIndex;
-                }
 
-                object result = info.methodInfo.Invoke(null, args);
-
-                bLuaUserData.PushReturnTypeOntoStack(mainThreadInstance, info.returnType, result);
-                return 1;
-
-            }
-            catch (Exception e)
-            {
-                var ex = e;
-                while (ex.InnerException != null)
-                {
-                    ex = ex.InnerException;
-                }
-                mainThreadInstance.Error($"Error calling function: {ex.Message}", $"{ex.StackTrace}");
-                return 0;
-            }
-            finally
-            {
-                mainThreadInstance.state = stateBack;
-            }
-        }
-
-        public static int CallStaticUserDataExtensionFunction(IntPtr _state)
-        {
-            IntPtr mainThreadState = Lua.GetMainThread(_state);
-            bLuaInstance mainThreadInstance = GetInstanceByState(mainThreadState);
-
-            var stateBack = mainThreadInstance.state;
-            try
-            {
-                mainThreadInstance.state = _state;
-
-                int n = LuaLibAPI.lua_tointegerx(_state, Lua.UpValueIndex(1), IntPtr.Zero);
-                MethodCallInfo info = mainThreadInstance.s_methods[n];
-
-                int stackSize = LuaLibAPI.lua_gettop(_state);
-
-                object[] parms = null;
-                int parmsIndex = 0;
-
-                int len = info.argTypes.Length;
-                if (len > 0 && info.argTypes[len - 1] == MethodCallInfo.ParamType.Params)
-                {
-                    len--;
-                    if (stackSize > len)
-                    {
-                        parms = new object[stackSize - len];
-                        parmsIndex = parms.Length - 1;
-                    }
-                }
-
-                object[] args = new object[info.argTypes.Length];
-                int argIndex = args.Length - 1;
-
-                if (parms != null)
-                {
-                    args[argIndex--] = parms;
-                }
-
-                while (argIndex > stackSize - 1)
-                {
-                    // Backfill any arguments with nulls.
-                    args[argIndex] = info.defaultArgs[argIndex];
-                    --argIndex;
-                }
-                while (stackSize - 1 > argIndex)
-                {
-                    if (parms != null)
-                    {
-                        parms[parmsIndex--] = Lua.PopStackIntoObject(mainThreadInstance);
-                    }
-                    else
-                    {
-                        Lua.PopStack(mainThreadInstance);
-                    }
-                    --stackSize;
-                }
-
-                while (stackSize > 0)
-                {
-                    args[argIndex] = bLuaUserData.PopStackIntoParamType(mainThreadInstance, info.argTypes[argIndex]);
                     --stackSize;
                     --argIndex;
                 }
@@ -1276,10 +1191,9 @@ namespace bLua
                         object obj = mainThreadInstance.s_liveObjects[instanceIndex];
 
                         object[] args = new object[1];
-
                         var propertyInfo = mainThreadInstance.s_properties[propertyEntry.index];
+                        
                         args[0] = bLuaUserData.PopStackIntoParamType(mainThreadInstance, propertyInfo.propertyType);
-
 
                         propertyInfo.propertyInfo.SetMethod.Invoke(obj, args);
                         return 0;

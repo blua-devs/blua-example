@@ -256,6 +256,11 @@ namespace bLua
 
         static bool AreAllBaseTypesRegistered(bLuaInstance _instance, Type _type)
         {
+            if (!_type.IsClass)
+            {
+                return true;
+            }
+
             Type checkingType = _type;
             while (checkingType != null && checkingType != checkingType.BaseType && checkingType.IsClass)
             {
@@ -296,12 +301,6 @@ namespace bLua
                 return;
             }
 
-            if (_type.IsClass && !IsBLuaUserData(_type))
-            {
-                _instance.Error($"Type {_type.Name} is not marked as a user data. Add [bLuaUserData] to its definition. (If the class is unaccessible, it's recommended to make a wrapper around the type specifically for Lua usage.)");
-                return;
-            }
-
             if (IsRegistered(_instance, _type))
             {
                 // Can't register the same type multiple times.
@@ -310,7 +309,7 @@ namespace bLua
 
             Dictionary<string, UserDataRegistryEntry.PropertyEntry> baseProperties = new Dictionary<string, UserDataRegistryEntry.PropertyEntry>();
 
-            if (_type.BaseType != null && _type.BaseType != _type)
+            if (_type.IsClass && _type.BaseType != null && _type.BaseType != _type)
             {
                 if (_type.BaseType.IsClass && !IsRegistered(_instance, _type.BaseType))
                 {
@@ -362,7 +361,7 @@ namespace bLua
                 object[] defaultArgs = new object[methodParams.Length];
                 for (int i = 0; i != methodParams.Length; ++i)
                 {
-                    argTypes[i] = SystemTypeToParamType(methodParams[i].ParameterType);
+                    argTypes[i] = SystemTypeToParamType(_instance, methodParams[i].ParameterType);
 
                     if (i == methodParams.Length - 1 && methodParams[i].GetCustomAttribute(typeof(ParamArrayAttribute)) != null)
                     {
@@ -383,7 +382,7 @@ namespace bLua
                     }
                 }
 
-                MethodCallInfo.ParamType returnType = SystemTypeToParamType(methodInfo.ReturnType);
+                MethodCallInfo.ParamType returnType = SystemTypeToParamType(_instance, methodInfo.ReturnType);
 
                 entry.properties[methodInfo.Name] = new UserDataRegistryEntry.PropertyEntry()
                 {
@@ -420,7 +419,7 @@ namespace bLua
                     continue;
                 }
 
-                MethodCallInfo.ParamType returnType = SystemTypeToParamType(propertyInfo.PropertyType);
+                MethodCallInfo.ParamType returnType = SystemTypeToParamType(_instance, propertyInfo.PropertyType);
                 if (returnType == MethodCallInfo.ParamType.Void)
                 {
                     Debug.LogWarning($"Failed to register property {propertyInfo.Name} on {_type.Name} because its type ({propertyInfo.PropertyType}) is not registered.");
@@ -449,7 +448,7 @@ namespace bLua
                     continue;
                 }
 
-                MethodCallInfo.ParamType returnType = SystemTypeToParamType(fieldInfo.FieldType);
+                MethodCallInfo.ParamType returnType = SystemTypeToParamType(_instance, fieldInfo.FieldType);
                 if (returnType == MethodCallInfo.ParamType.Void)
                 {
                     Debug.LogWarning($"Failed to register field {fieldInfo.Name} on {_type.Name} because its type ({fieldInfo.FieldType}) is not registered.");
@@ -506,14 +505,15 @@ namespace bLua
                 case MethodCallInfo.ParamType.LuaValue:
                     return Lua.PopStackIntoValue(_instance);
                 case MethodCallInfo.ParamType.UserDataClass:
-                    return Lua.PopStackIntoValue(_instance);
+                    object o = Lua.PopStackIntoValue(_instance).Object;
+                    return o != null ? Convert.ChangeType(o, o.GetType()) : o;
                 default:
                     Lua.PopStack(_instance);
                     return null;
             }
         }
 
-        public static MethodCallInfo.ParamType SystemTypeToParamType(Type _type)
+        public static MethodCallInfo.ParamType SystemTypeToParamType(bLuaInstance _instance, Type _type)
         {
             if (_type == typeof(void))
             {
@@ -543,7 +543,13 @@ namespace bLua
             {
                 return MethodCallInfo.ParamType.LuaValue;
             }
-            else if (_type.IsClass && IsBLuaUserData(_type))
+            else if (_type.IsClass
+                && (IsRegistered(_instance, _type) || IsBLuaUserData(_type)))
+            {
+                return MethodCallInfo.ParamType.UserDataClass;
+            }
+            else if ((_type.IsValueType && !_type.IsEnum) // _type.IsStruct
+                && (IsRegistered(_instance, _type) || IsBLuaUserData(_type)))
             {
                 return MethodCallInfo.ParamType.UserDataClass;
             }
