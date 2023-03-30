@@ -473,7 +473,10 @@ MonoBehaviour:
   code: "function Test()\n\tgameObject.name = \"test\"\n\tprint(\"cube name is \"
     .. gameObject.name)\n\tlocal foundGO = GameObject.Find(\"test\")\n\tprint(\"found
     cube name is \".. foundGO.name)\n\tlocal newGO = GameObject.New()\n\tprint(\"new
-    cube name is \".. newGO.name)\nend\nTest()"
+    cube name is \".. newGO.name)\nend\nfunction Test2()\n\tlocal v = Vector3.New(0,5,0)\n\tlocal
+    v2 = Vector3.New(0,2.5,0)\n\tgameObject.position = v\n\tprint(\"y is \" .. gameObject.position.y)\n\tgameObject.position
+    = v2\n\tprint(\"y is \" .. gameObject.position.y)\n\tprint(\"y normalized is
+    \" .. gameObject.position:Normalize().y)\nend\nTest()\nTest2()"
 --- !u!1001 &4686878184624808642
 PrefabInstance:
   m_ObjectHideFlags: 0

@@ -908,7 +908,6 @@ namespace bLua
                     }
                 }
 
-
                 object[] args = new object[info.argTypes.Length];
                 int argIndex = args.Length - 1;
 
@@ -1265,13 +1264,6 @@ namespace bLua
         public void RegisterUserData(Type _type)
         {
             bLuaUserData.Register(this, _type);
-        }
-
-        /// <remarks> NOTE! You can simply use RegisterUserData on extension types instead if you'd like. It works the same. </remarks>
-        /// <summary> Registers a given static C# extension methods class so that the methods can be used by matchin Lua values and Lua userdata. </summary>
-        public void RegisterExtensionType(Type _type)
-        {
-            bLuaUserData.RegisterExtensionType(this, _type);
         }
         #endregion
     }
