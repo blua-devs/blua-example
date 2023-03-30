@@ -295,7 +295,7 @@ namespace bLua
         }
 
         /// <summary> Registers a type as Lua userdata. Does not require the [bLuaUserData] attribute unless specified. </summary>
-        public static void Register(bLuaInstance _instance, Type _type, bool _registerStatics = true)
+        public static void Register(bLuaInstance _instance, Type _type)
         {
             if (_type == typeof(object))
             {
@@ -315,7 +315,7 @@ namespace bLua
             {
                 if (_type.BaseType.IsClass && !IsRegistered(_instance, _type.BaseType))
                 {
-                    Register(_instance, _type.BaseType, _registerStatics);
+                    Register(_instance, _type.BaseType);
                 }
 
                 if (_instance.s_typenameToEntryIndex.ContainsKey(_type.BaseType.Name))
@@ -338,14 +338,10 @@ namespace bLua
 
             _instance.s_typenameToEntryIndex[_type.Name] = typeIndex;
 
-            BindingFlags bindingFlags = BindingFlags.Public | BindingFlags.Instance;
+            BindingFlags bindingFlags = BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static;
             if (!AreAllBaseTypesRegistered(_instance, _type))
             {
                 bindingFlags |= BindingFlags.DeclaredOnly;
-            }
-            if (_registerStatics)
-            {
-                bindingFlags |= BindingFlags.Static;
             }
 
             MethodInfo[] methods = _type.GetMethods(bindingFlags);
