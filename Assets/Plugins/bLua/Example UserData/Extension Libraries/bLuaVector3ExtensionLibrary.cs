@@ -5,12 +5,12 @@ using UnityEngine;
 
 namespace bLua.ExampleUserData
 {
-    [bLuaUserData(reliantUserData = new Type[1] { typeof(Vector3) } )]
+    [bLuaUserData(reliantUserData = new Type[1] { typeof(bLuaVector3) } )]
     public static class bLuaVector3ExtensionLibrary
     {
-        public static Vector3 Normalize(this Vector3 _vector3)
+        public static bLuaVector3 Normalize(this bLuaVector3 v)
         {
-            return _vector3.normalized;
+            return v.__vector3.normalized;
         }
     }
 } // bLua.ExampleUserData namespace

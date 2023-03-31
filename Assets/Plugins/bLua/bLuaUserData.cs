@@ -15,7 +15,7 @@ namespace bLua
 
     }
 
-    [AttributeUsage(AttributeTargets.Class)]
+    [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]
     public class bLuaUserDataAttribute : Attribute
     {
         /// <summary> Any types added to this array will be registered just before this type is, making sure you don't accidentally

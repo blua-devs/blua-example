@@ -6,7 +6,7 @@ using bLua;
 
 namespace bLua.ExampleUserData
 {
-    [bLuaUserData(reliantUserData = new Type[1] { typeof(Vector3) })]
+    [bLuaUserData(reliantUserData = new Type[1] { typeof(bLuaVector3) })]
     public class bLuaGameObject
     {
         [bLuaHidden]
@@ -31,7 +31,7 @@ namespace bLua.ExampleUserData
             }
         }
 
-        public Vector3 position
+        public bLuaVector3 position
         {
             get
             {
