@@ -53,6 +53,11 @@ namespace bLua.ExampleUserData
         }
 
 
+        public override string ToString()
+        {
+            return $"({x}, {y}, {z})";
+        }
+
         public static implicit operator Vector3(bLuaVector3 v)
         {
             return v.__vector3;

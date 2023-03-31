@@ -200,6 +200,12 @@ namespace bLua.NativeLua
             LuaLibAPI.lua_createtable(_instance.state, _reserveArray, _reserveTable);
         }
 
+        public static void PushString(bLuaInstance _instance, string _string)
+        {
+            byte[] b = StrToUTF8(_string);
+            LuaLibAPI.lua_pushlstring(_instance.state, StringToIntPtr(_string), (ulong)b.Length);
+        }
+
         public static void PushOntoStack(bLuaInstance _instance, object _object)
         {
             bLuaValue dynValue = _object as bLuaValue;
@@ -239,8 +245,7 @@ namespace bLua.NativeLua
             }
             else if (_object is string)
             {
-                byte[] b = StrToUTF8((string)_object);
-                LuaLibAPI.lua_pushlstring(_instance.state, StringToIntPtr((string)_object), (ulong)b.Length);
+                PushString(_instance, (string)_object);
             }
             else if (_object is LuaCFunction)
             {

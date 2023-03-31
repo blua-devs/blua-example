@@ -346,9 +346,19 @@ namespace bLua
                 properties = baseProperties,
             };
             entry.metatable = Lua.NewMetaTable(_instance, _type.Name);
-            entry.metatable.Set("__index", bLuaValue.CreateClosure(_instance, bLuaInstance.IndexFunction, bLuaValue.CreateNumber(_instance, typeIndex)));
-            entry.metatable.Set("__newindex", bLuaValue.CreateClosure(_instance, bLuaInstance.SetIndexFunction, bLuaValue.CreateNumber(_instance, typeIndex)));
-            entry.metatable.Set("__gc", _instance._gc);
+            entry.metatable.Set("__index",    bLuaValue.CreateClosure(_instance, bLuaInstance.Metamethod_Index,          bLuaValue.CreateNumber(_instance, typeIndex)));
+            entry.metatable.Set("__newindex", bLuaValue.CreateClosure(_instance, bLuaInstance.Metamethod_NewIndex,       bLuaValue.CreateNumber(_instance, typeIndex)));
+            //entry.metatable.Set("__add",      bLuaValue.CreateClosure(_instance, bLuaInstance.Metamethod_Addition,       bLuaValue.CreateNumber(_instance, typeIndex)));
+            //entry.metatable.Set("__mul",      bLuaValue.CreateClosure(_instance, bLuaInstance.Metamethod_Multiplication, bLuaValue.CreateNumber(_instance, typeIndex)));
+            //entry.metatable.Set("__div",      bLuaValue.CreateClosure(_instance, bLuaInstance.Metamethod_Division,       bLuaValue.CreateNumber(_instance, typeIndex)));
+            //entry.metatable.Set("__unm",      bLuaValue.CreateClosure(_instance, bLuaInstance.Metamethod_NegationUnary,  bLuaValue.CreateNumber(_instance, typeIndex)));
+            //entry.metatable.Set("__concat",   bLuaValue.CreateClosure(_instance, bLuaInstance.Metamethod_Concatenation,  bLuaValue.CreateNumber(_instance, typeIndex)));
+            //entry.metatable.Set("__len",      bLuaValue.CreateClosure(_instance, bLuaInstance.Metamethod_Length,         bLuaValue.CreateNumber(_instance, typeIndex)));
+            //entry.metatable.Set("__eq",       bLuaValue.CreateClosure(_instance, bLuaInstance.Metamethod_Equal,          bLuaValue.CreateNumber(_instance, typeIndex)));
+            //entry.metatable.Set("__lt",       bLuaValue.CreateClosure(_instance, bLuaInstance.Metamethod_LessThan,       bLuaValue.CreateNumber(_instance, typeIndex)));
+            //entry.metatable.Set("__le",       bLuaValue.CreateClosure(_instance, bLuaInstance.Metamethod_LessEqual,      bLuaValue.CreateNumber(_instance, typeIndex)));
+            entry.metatable.Set("__gc",       bLuaValue.CreateClosure(_instance, bLuaInstance.MetaMethod_GC,             bLuaValue.CreateNumber(_instance, typeIndex)));
+            entry.metatable.Set("__tostring", bLuaValue.CreateClosure(_instance, bLuaInstance.Metamethod_ToString,       bLuaValue.CreateNumber(_instance, typeIndex)));
 
             _instance.s_typenameToEntryIndex[_type.Name] = typeIndex;
 

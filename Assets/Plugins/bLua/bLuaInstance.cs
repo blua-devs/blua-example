@@ -1062,8 +1062,60 @@ namespace bLua
                 mainThreadInstance.state = stateBack;
             }
         }
+        #endregion // C Functions called from Lua
 
-        public static int IndexFunction(IntPtr _state)
+        #region C Metamethods
+        public static int Metamethod_Addition(IntPtr _state)
+        {
+            return 0;
+        }
+
+        public static int Metamethod_Subtraction(IntPtr _state)
+        {
+            return 0;
+        }
+
+        public static int Metamethod_Multiplication(IntPtr _state)
+        {
+            return 0;
+        }
+
+        public static int Metamethod_Division(IntPtr _state)
+        {
+            return 0;
+        }
+
+        public static int Metamethod_NegationUnary(IntPtr _state)
+        {
+            return 0;
+        }
+
+        public static int Metamethod_Concatenation(IntPtr _state)
+        {
+            return 0;
+        }
+
+        public static int Metamethod_Length(IntPtr _state)
+        {
+            return 0;
+        }
+
+        public static int Metamethod_Equal(IntPtr _state)
+        {
+            return 0;
+        }
+
+        public static int Metamethod_LessThan(IntPtr _state)
+        {
+            return 0;
+        }
+
+        public static int Metamethod_LessEqual(IntPtr _state)
+        {
+            return 0;
+        }
+
+        public static int Metamethod_Index(IntPtr _state)
         {
             IntPtr mainThreadState = Lua.GetMainThread(_state);
             bLuaInstance mainThreadInstance = GetInstanceByState(mainThreadState);
@@ -1139,7 +1191,7 @@ namespace bLua
             }
         }
 
-        public static int SetIndexFunction(IntPtr _state)
+        public static int Metamethod_NewIndex(IntPtr _state)
         {
             IntPtr mainThreadState = Lua.GetMainThread(_state);
             bLuaInstance mainThreadInstance = GetInstanceByState(mainThreadState);
@@ -1210,7 +1262,7 @@ namespace bLua
             }
         }
 
-        public static int GCFunction(IntPtr _state)
+        public static int MetaMethod_GC(IntPtr _state)
         {
             if (_state == IntPtr.Zero)
             {
@@ -1233,7 +1285,68 @@ namespace bLua
 
             return 0;
         }
-        #endregion // C Functions called from Lua
+
+        public static int Metamethod_ToString(IntPtr _state)
+        {
+            IntPtr mainThreadState = Lua.GetMainThread(_state);
+            bLuaInstance mainThreadInstance = GetInstanceByState(mainThreadState);
+            IntPtr stateBack = mainThreadInstance.state;
+
+            try
+            {
+                mainThreadInstance.state = _state;
+
+                int n = LuaLibAPI.lua_tointegerx(_state, Lua.UpValueIndex(1), IntPtr.Zero);
+                if (n < 0 || n >= mainThreadInstance.s_entries.Count)
+                {
+                    mainThreadInstance.Error($"{bLuaError.error_invalidTypeIndex}{n}");
+                    return 0;
+                }
+
+                UserDataRegistryEntry userDataInfo = mainThreadInstance.s_entries[n];
+                UserDataRegistryEntry.PropertyEntry propertyEntry;
+
+                if (userDataInfo.properties.TryGetValue("ToString", out propertyEntry))
+                {
+                    if (propertyEntry.index < 0 || propertyEntry.index >= mainThreadInstance.s_methods.Count)
+                    {
+                        mainThreadInstance.Error($"{bLuaError.error_invalidMethodIndex}{n}");
+                        return 0;
+                    }
+
+                    MethodCallInfo methodInfo = mainThreadInstance.s_methods[propertyEntry.index];
+
+                    int t = LuaLibAPI.lua_type(_state, 1);
+                    if (t != (int)DataType.UserData)
+                    {
+                        mainThreadInstance.Error($"{bLuaError.error_objectIsNotUserdata}{(DataType)t}");
+                        return 0;
+                    }
+
+                    LuaLibAPI.lua_checkstack(_state, 1);
+                    int res = LuaLibAPI.lua_getiuservalue(_state, 1, 1);
+                    if (res != (int)DataType.Number)
+                    {
+                        mainThreadInstance.Error($"{bLuaError.error_objectNotProvided}");
+                        return 0;
+                    }
+                    int liveObjectIndex = LuaLibAPI.lua_tointegerx(_state, -1, IntPtr.Zero);
+                    object obj = mainThreadInstance.s_liveObjects[liveObjectIndex];
+
+                    object result = methodInfo.methodInfo.Invoke(obj, new object[0]);
+                    bLuaUserData.PushReturnTypeOntoStack(mainThreadInstance, MethodCallInfo.ParamType.Str, result);
+                    return 1;
+                }
+
+                Lua.PushNil(mainThreadInstance);
+                return 1;
+            }
+            finally
+            {
+                mainThreadInstance.state = stateBack;
+            }
+        }
+        #endregion // C Metamethods
 
         #region Userdata
         /// <summary> Registers all C# types in all assemblies with the [bLuaUserData] attribute as Lua userdata on this particular instance. </summary>
