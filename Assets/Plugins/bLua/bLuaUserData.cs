@@ -132,7 +132,7 @@ namespace bLua
             int ntype = LuaLibAPI.lua_getiuservalue(_instance.state, _nstack, 1);
             if (ntype != (int)DataType.Number)
             {
-                _instance.Error($"Could not find valid user data object");
+                _instance.Error($"{bLuaError.error_invalidUserdata}");
                 Lua.PopStack(_instance);
                 return null;
             }
@@ -206,7 +206,7 @@ namespace bLua
             int typeIndex;
             if (_instance.s_typenameToEntryIndex.TryGetValue(_object.GetType().Name, out typeIndex) == false)
             {
-                _instance.Error($"Type {_object.GetType().Name} is not marked as a user data. Register it with `bLuaUserData.Register`, `bLuaInstance.RegisterUserData`, or add the [bLuaUserData] attribute and have your bLuaInstance auto register all bLuaUserData.");
+                Debug.LogError($"Type {_object.GetType().Name} is not marked as a user data. Register it with `bLuaUserData.Register`, `bLuaInstance.RegisterUserData`, or add the [bLuaUserData] attribute and have your bLuaInstance auto register all bLuaUserData.");
                 Lua.PushNil(_instance);
                 return;
             }

@@ -180,7 +180,6 @@ namespace bLua
 
         public List<UserDataRegistryEntry> s_entries = new List<UserDataRegistryEntry>();
         public Dictionary<string, int> s_typenameToEntryIndex = new Dictionary<string, int>();
-        public bLuaValue _gc;
 
         public object[] s_liveObjects = new object[65536];
 
@@ -244,7 +243,6 @@ namespace bLua
             state = LuaXLibAPI.luaL_newstate();
             instanceRegistry.Add(state, this);
 
-            _gc = bLuaValue.CreateFunction(this, GCFunction);
             // Initialize all bLua userdata
             if (settings.autoRegisterTypes.HasFlag(bLuaSettings.AutoRegisterTypes.BLua))
             {
@@ -620,16 +618,6 @@ namespace bLua
         /// <summary> This delegate is called whenever a Lua Error happens. Allows for bLua features (or developers) to listen. </summary>
         public LuaErrorDelegate LuaErrorHandler;
 
-
-        public class LuaException : Exception
-        {
-            public LuaException(string message) : base(message)
-            {
-
-            }
-        }
-
-
         public void Error(string _message, string _engineTrace = null)
         {
             if (LuaErrorHandler != null)
@@ -644,6 +632,16 @@ namespace bLua
             }
 
             Debug.LogError(msg);
+        }
+
+        public void ExceptionError(Exception _exception, string _prependedErrorInfo = "")
+        {
+            Exception ex = _exception;
+            while (ex.InnerException != null)
+            {
+                ex = ex.InnerException;
+            }
+            Error($"{_prependedErrorInfo}{ex.Message}", $"{ex.StackTrace}");
         }
         #endregion // Errors
 
@@ -739,7 +737,7 @@ namespace bLua
                 {
                     string error = Lua.GetString(state, -1);
                     Lua.LuaPop(state, 1);
-                    Error($"Error in function call: {error}");
+                    Error($"{bLuaError.error_inFunctionCall}{error}");
                     throw new LuaException(error);
                 }
 
@@ -795,7 +793,7 @@ namespace bLua
 
                 if (n < 0 || n >= mainThreadInstance.s_methods.Count)
                 {
-                    mainThreadInstance.Error($"Illegal method index: {n}");
+                    mainThreadInstance.Error($"{bLuaError.error_invalidMethodIndex}{n}");
                     return 0;
                 }
 
@@ -861,12 +859,7 @@ namespace bLua
             }
             catch (Exception e)
             {
-                var ex = e.InnerException;
-                if (ex == null)
-                {
-                    ex = e;
-                }
-                mainThreadInstance.Error($"Error calling delegate: {ex.Message}", $"{ex.StackTrace}");
+                mainThreadInstance.ExceptionError(e, bLuaError.error_callingDelegate);
                 return 0;
             }
             finally
@@ -888,7 +881,7 @@ namespace bLua
                 int stackSize = LuaLibAPI.lua_gettop(_state);
                 if (stackSize == 0 || LuaLibAPI.lua_type(_state, 1) != (int)DataType.UserData)
                 {
-                    mainThreadInstance.Error($"Object not provided when calling function.");
+                    mainThreadInstance.Error($"{bLuaError.error_objectNotProvided}");
                     return 0;
                 }
 
@@ -896,7 +889,7 @@ namespace bLua
 
                 if (n < 0 || n >= mainThreadInstance.s_methods.Count)
                 {
-                    mainThreadInstance.Error($"Illegal method index: {n}");
+                    mainThreadInstance.Error($"{bLuaError.error_invalidMethodIndex}{n}");
                     return 0;
                 }
 
@@ -953,14 +946,14 @@ namespace bLua
 
                 if (LuaLibAPI.lua_gettop(_state) < 1)
                 {
-                    mainThreadInstance.Error($"Stack is empty");
+                    mainThreadInstance.Error($"{bLuaError.error_stackIsEmpty}");
                     return 0;
                 }
 
                 int t = LuaLibAPI.lua_type(_state, 1);
                 if (t != (int)DataType.UserData)
                 {
-                    mainThreadInstance.Error($"Object is not a user data: {((DataType)t).ToString()}");
+                    mainThreadInstance.Error($"{bLuaError.error_objectIsNotUserdata}{(DataType)t}");
                     return 0;
                 }
 
@@ -968,7 +961,7 @@ namespace bLua
                 int res = LuaLibAPI.lua_getiuservalue(_state, 1, 1);
                 if (res != (int)DataType.Number)
                 {
-                    mainThreadInstance.Error($"Object not provided when calling function.");
+                    mainThreadInstance.Error($"{bLuaError.error_objectNotProvided}");
                     return 0;
                 }
                 int liveObjectIndex = LuaLibAPI.lua_tointegerx(_state, -1, IntPtr.Zero);
@@ -978,16 +971,10 @@ namespace bLua
 
                 bLuaUserData.PushReturnTypeOntoStack(mainThreadInstance, info.returnType, result);
                 return 1;
-
             }
             catch (Exception e)
             {
-                var ex = e.InnerException;
-                if (ex == null)
-                {
-                    ex = e;
-                }
-                mainThreadInstance.Error($"Error calling function: {ex.Message}", $"{ex.StackTrace}");
+                mainThreadInstance.ExceptionError(e, bLuaError.error_callingFunction);
                 return 0;
             }
             finally
@@ -1064,16 +1051,10 @@ namespace bLua
 
                 bLuaUserData.PushReturnTypeOntoStack(mainThreadInstance, info.returnType, result);
                 return 1;
-
             }
             catch (Exception e)
             {
-                var ex = e;
-                while (ex.InnerException != null)
-                {
-                    ex = ex.InnerException;
-                }
-                mainThreadInstance.Error($"Error calling function: {ex.Message}", $"{ex.StackTrace}");
+                mainThreadInstance.ExceptionError(e, bLuaError.error_callingFunction);
                 return 0;
             }
             finally
@@ -1096,7 +1077,7 @@ namespace bLua
 
                 if (n < 0 || n >= mainThreadInstance.s_entries.Count)
                 {
-                    mainThreadInstance.Error($"Invalid type index in lua: {n}");
+                    mainThreadInstance.Error($"{bLuaError.error_invalidTypeIndex}{n}");
                     return 0;
                 }
 
@@ -1144,17 +1125,11 @@ namespace bLua
                 }
 
                 Lua.PushNil(mainThreadInstance);
-
                 return 1;
             }
             catch (Exception e)
             {
-                var ex = e.InnerException;
-                if (ex == null)
-                {
-                    ex = e;
-                }
-                mainThreadInstance.Error("Error indexing userdata", $"Error in index: {ex.Message} {ex.StackTrace}");
+                mainThreadInstance.ExceptionError(e, bLuaError.error_objectNotProvided);
                 Lua.PushNil(mainThreadInstance);
                 return 1;
             }
@@ -1178,7 +1153,7 @@ namespace bLua
 
                 if (n < 0 || n >= mainThreadInstance.s_entries.Count)
                 {
-                    mainThreadInstance.Error($"Invalid type index in lua: {n}");
+                    mainThreadInstance.Error($"{bLuaError.error_invalidTypeIndex}{n}");
                     return 0;
                 }
 
@@ -1221,12 +1196,12 @@ namespace bLua
                     }
                     else
                     {
-                        mainThreadInstance.Error($"Could not set property {str} (propertType unexpected)");
+                        mainThreadInstance.Error($"{bLuaError.error_setProperty}{str}");
                         return 0;
                     }
                 }
 
-                mainThreadInstance.Error($"Could not set property {str}");
+                mainThreadInstance.Error($"{bLuaError.error_setProperty}{str}");
                 return 0;
             }
             finally

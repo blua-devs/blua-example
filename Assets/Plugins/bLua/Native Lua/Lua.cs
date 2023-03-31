@@ -253,7 +253,7 @@ namespace bLua.NativeLua
             else
             {
                 LuaLibAPI.lua_pushnil(_instance.state);
-                _instance.Error($"Unrecognized object pushing onto stack: {_object.GetType().ToString()}");
+                _instance.Error($"{bLuaError.error_unrecognizedStackPush}{_object.GetType()}");
             }
         }
 
