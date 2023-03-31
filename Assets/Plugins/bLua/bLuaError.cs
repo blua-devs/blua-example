@@ -37,5 +37,9 @@ namespace bLua
 
         public const string error_stackIsEmpty = "stack is empty";
         public const string error_unrecognizedStackPush = "unrecognized object pushing onto stack: ";
+
+        public const string error_concatenation = "failed to concatenate type: ";
+        public const string error_addition = "failed to add type: ";
+        public const string error_subtraction = "failed to subtract type: ";
     }
 } // bLua namespace

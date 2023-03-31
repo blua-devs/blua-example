@@ -119,8 +119,24 @@ namespace bLua
                 bLuaValue operandL = Lua.PopStackIntoValue(mainThreadInstance);
                 string lhs = operandL.CastToString();
                 string rhs = operandR.CastToString();
-                string result = lhs + rhs;
 
+                if (operandL.Type == DataType.UserData
+                    && (string.IsNullOrEmpty(lhs) || operandL.Object.GetType().FullName == lhs))
+                {
+                    mainThreadInstance.Error($"{bLuaError.error_concatenation}{operandL.Object.GetType().Name}");
+                    Lua.PushNil(mainThreadInstance);
+                    return 1;
+                }
+
+                if (operandR.Type == DataType.UserData
+                    && (string.IsNullOrEmpty(rhs) || operandR.Object.GetType().FullName == rhs))
+                {
+                    mainThreadInstance.Error($"{bLuaError.error_concatenation}{operandR.Object.GetType().Name}");
+                    Lua.PushNil(mainThreadInstance);
+                    return 1;
+                }
+
+                string result = lhs + rhs;
                 bLuaUserData.PushReturnTypeOntoStack(mainThreadInstance, MethodCallInfo.ParamType.Str, result);
                 return 1;
             }
