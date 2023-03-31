@@ -108,7 +108,26 @@ namespace bLua
 
         public static int Metamethod_Concatenation(IntPtr _state)
         {
-            return 0;
+            bLuaInstance mainThreadInstance = bLuaInstance.GetInstanceByState(Lua.GetMainThread(_state));
+            IntPtr revertState = mainThreadInstance.state;
+
+            try
+            {
+                mainThreadInstance.state = _state;
+
+                bLuaValue operandR = Lua.PopStackIntoValue(mainThreadInstance);
+                bLuaValue operandL = Lua.PopStackIntoValue(mainThreadInstance);
+                string lhs = operandL.CastToString();
+                string rhs = operandR.CastToString();
+                string result = lhs + rhs;
+
+                bLuaUserData.PushReturnTypeOntoStack(mainThreadInstance, MethodCallInfo.ParamType.Str, result);
+                return 1;
+            }
+            finally
+            {
+                mainThreadInstance.state = revertState;
+            }
         }
 
         public static int Metamethod_Length(IntPtr _state)

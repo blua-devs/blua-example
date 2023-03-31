@@ -19,7 +19,6 @@ namespace bLua
     {
         Nil = 0,
         Boolean = 1,
-        LightUserData = 2,
         Number = 3,
         String = 4,
         Table = 5,

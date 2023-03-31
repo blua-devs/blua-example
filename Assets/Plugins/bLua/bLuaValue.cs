@@ -429,6 +429,13 @@ namespace bLua
                     return Lua.PopNumber(instance).ToString();
                 case DataType.Boolean:
                     return Lua.PopBool(instance) ? "true" : "false";
+                case DataType.UserData:
+                    bLuaValue v = Lua.PopStackIntoValue(instance);
+                    if (v.Object.GetType().GetMethod("ToString") != null)
+                    {
+                        return v.Object.ToString();
+                    }
+                    goto default;
                 default:
                     Lua.PopStack(instance);
                     return _defaultValue;
