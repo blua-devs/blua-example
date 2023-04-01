@@ -234,7 +234,7 @@ namespace bLua.Internal
             {
                 _args[0] = _liveObject;
             }
-            for (int p = isExtensionMethod ? 1 : 0; p < _methodInfo.argTypes.Length; p++)
+            for (int p = _methodInfo.argTypes.Length - (isExtensionMethod ? 2 : 1); p >=0 ; p--)
             {
                 _args[p] = bLuaUserData.PopStackIntoParamType(_instance, _methodInfo.argTypes[p]);
             }
