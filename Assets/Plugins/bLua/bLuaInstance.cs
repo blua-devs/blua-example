@@ -413,7 +413,7 @@ namespace bLua
 
             if (FeatureEnabled(Feature.HelperMacros))
             {
-                SetGlobal<Action<string>>("print", (s) => OnPrint.Invoke(s));
+                SetGlobal<Action<bLuaValue>>("print", (s) => OnPrint.Invoke(s.CastToString()));
             }
             #endregion // Feature Handling
 
