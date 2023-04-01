@@ -73,9 +73,9 @@ namespace bLua.ExampleUserData
         {
             return a.__vector3 - b.__vector3;
         }
-        public static bLuaVector3 operator -(bLuaVector3 a)
+        public static bLuaVector3 operator -(bLuaVector3 v)
         {
-            return -a.__vector3;
+            return -v.__vector3;
         }
         public static bLuaVector3 operator *(bLuaVector3 a, bLuaVector3 b)
         {

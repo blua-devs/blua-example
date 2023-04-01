@@ -122,18 +122,21 @@ namespace bLua.Internal
             {
                 ParameterInfo[] parameterInfos = methodInfos[m].GetParameters();
 
-                // Make sure the parameters on this method match any requirements that have been given to the function
-                if (_paramTypeRequirementsOrdered.Length > parameterInfos.Length)
-                {
-                    continue;
-                }
                 bool parameterRequirementsMatch = true;
-                for (int p = 0; p < _paramTypeRequirementsOrdered.Length; p++)
+                for (int p = 0; p < parameterInfos.Length; p++)
                 {
-                    if (_paramTypeRequirementsOrdered[p] == null) // null means any type in this case, skip the type check
+                    // if there isn't a requirement for this param, skip the type check
+                    if (p >= _paramTypeRequirementsOrdered.Length)
                     {
                         continue;
                     }
+
+                    // null means any type in this case, skip the type check
+                    if (_paramTypeRequirementsOrdered[p] == null)
+                    {
+                        continue;
+                    }
+
                     if (_paramTypeRequirementsOrdered[p] != parameterInfos[p].ParameterType)
                     {
                         parameterRequirementsMatch = false;
@@ -180,7 +183,11 @@ namespace bLua.Internal
                     }
                 }
 
-                object result = operationMethod.Invoke(null, new object[2] { operandL.ToObject(), operandR.ToObject() });
+                object[] args = new object[operationMethod.GetParameters().Length];
+                if (args.Length >= 1) args[0] = operandL.ToObject();
+                if (args.Length >= 2) args[1] = operandR.ToObject();
+
+                object result = operationMethod.Invoke(null, args);
                 Lua.PushOntoStack(mainThreadInstance, result);
                 return 1;
             }
