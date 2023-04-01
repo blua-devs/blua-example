@@ -4,8 +4,9 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using System.Reflection;
-using bLua.NativeLua;
 using System.Runtime.CompilerServices;
+using bLua.NativeLua;
+using bLua.Internal;
 
 namespace bLua
 {
@@ -348,15 +349,21 @@ namespace bLua
             entry.metatable = Lua.NewMetaTable(_instance, _type.Name);
             entry.metatable.Set("__index",    bLuaValue.CreateClosure(_instance, bLuaMetamethods.Metamethod_Index,          bLuaValue.CreateNumber(_instance, typeIndex)));
             entry.metatable.Set("__newindex", bLuaValue.CreateClosure(_instance, bLuaMetamethods.Metamethod_NewIndex,       bLuaValue.CreateNumber(_instance, typeIndex)));
-            //entry.metatable.Set("__add",      bLuaValue.CreateClosure(_instance, bLuaMetamethods.Metamethod_Addition,       bLuaValue.CreateNumber(_instance, typeIndex)));
-            //entry.metatable.Set("__mul",      bLuaValue.CreateClosure(_instance, bLuaMetamethods.Metamethod_Multiplication, bLuaValue.CreateNumber(_instance, typeIndex)));
-            //entry.metatable.Set("__div",      bLuaValue.CreateClosure(_instance, bLuaMetamethods.Metamethod_Division,       bLuaValue.CreateNumber(_instance, typeIndex)));
-            //entry.metatable.Set("__unm",      bLuaValue.CreateClosure(_instance, bLuaMetamethods.Metamethod_NegationUnary,  bLuaValue.CreateNumber(_instance, typeIndex)));
             //entry.metatable.Set("__len",      bLuaValue.CreateClosure(_instance, bLuaMetamethods.Metamethod_Length,         bLuaValue.CreateNumber(_instance, typeIndex)));
-            //entry.metatable.Set("__eq",       bLuaValue.CreateClosure(_instance, bLuaMetamethods.Metamethod_Equal,          bLuaValue.CreateNumber(_instance, typeIndex)));
-            //entry.metatable.Set("__lt",       bLuaValue.CreateClosure(_instance, bLuaMetamethods.Metamethod_LessThan,       bLuaValue.CreateNumber(_instance, typeIndex)));
-            //entry.metatable.Set("__le",       bLuaValue.CreateClosure(_instance, bLuaMetamethods.Metamethod_LessEqual,      bLuaValue.CreateNumber(_instance, typeIndex)));
             entry.metatable.Set("__gc",       bLuaValue.CreateClosure(_instance, bLuaMetamethods.MetaMethod_GC,             bLuaValue.CreateNumber(_instance, typeIndex)));
+
+            for (int i = 0; i < bLuaMetamethods.metamethodCollection.Length; i++)
+            {
+                if (_type.GetMethods().FirstOrDefault((mi) => mi.Name == bLuaMetamethods.metamethodCollection[i][0]) != null)
+                {
+                    entry.metatable.Set(bLuaMetamethods.metamethodCollection[i][1],
+                        bLuaValue.CreateClosure(_instance,
+                            bLuaMetamethods.Metamethod_Operator,
+                            bLuaValue.CreateNumber(_instance, typeIndex),
+                            bLuaValue.CreateString(_instance, bLuaMetamethods.metamethodCollection[i][0]),   // method name string
+                            bLuaValue.CreateString(_instance, bLuaMetamethods.metamethodCollection[i][2]))); // error string
+                }
+            }
             if (_type.GetMethod("ToString") != null)
             {
                 entry.metatable.Set("__concat",   bLuaValue.CreateClosure(_instance, bLuaMetamethods.Metamethod_Concatenation,  bLuaValue.CreateNumber(_instance, typeIndex)));

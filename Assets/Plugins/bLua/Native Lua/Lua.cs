@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Unity.Profiling;
+using bLua.Internal;
 
 namespace bLua.NativeLua
 {

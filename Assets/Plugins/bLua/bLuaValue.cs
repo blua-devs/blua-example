@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Assertions;
 using bLua.NativeLua;
+using bLua.Internal;
 
 namespace bLua
 {

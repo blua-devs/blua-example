@@ -3,7 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace bLua
+namespace bLua.Internal
 {
     public class LuaException : Exception
     {
@@ -39,7 +39,15 @@ namespace bLua
         public const string error_unrecognizedStackPush = "unrecognized object pushing onto stack: ";
 
         public const string error_concatenation = "failed to concatenate type: ";
-        public const string error_addition = "failed to add type: ";
-        public const string error_subtraction = "failed to subtract type: ";
+        public const string error_length = "failed to get length of type: ";
+
+        public const string error_operationAddition = "failed add operation (+) on types: ";
+        public const string error_operationSubtraction = "failed subtract operation (-) on types: ";
+        public const string error_operationMultiply = "failed multiply operation (*) on types: ";
+        public const string error_operationDivision = "failed division operation (/) on types: ";
+        public const string error_operationUnaryNegation = "failed negate operation (-) on types: ";
+        public const string error_operationEquality = "failed equals operation (==) on types: ";
+        public const string error_operationLessThan = "failed less than/greater than operation (< / >) on types: ";
+        public const string error_operationLessThanOrEqual = "failed less than or equal/greater than or equal operation (<= / >=) on types: ";
     }
-} // bLua namespace
+} // bLua.Internal namespace

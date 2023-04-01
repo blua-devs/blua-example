@@ -1,14 +1,45 @@
 using System;
+using System.Linq;
+using System.Reflection;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using bLua;
 using bLua.NativeLua;
 
-namespace bLua
+namespace bLua.Internal
 {
     public static class bLuaMetamethods
     {
+        public const string csharp_operator_addition = "op_Addition";
+        public const string csharp_operator_subtraction = "op_Subtraction";
+        public const string csharp_operator_multiplication = "op_Multiply";
+        public const string csharp_operator_division = "op_Division";
+        public const string csharp_operator_unaryNegation = "op_UnaryNegation";
+        public const string csharp_operator_equality = "op_Equality";
+        public const string csharp_operator_lessThan = "op_LessThan";
+        public const string csharp_operator_lessThanOrEqual = "op_LessThanOrEqual";
+        public const string lua_metamethod_addition = "__add";
+        public const string lua_metamethod_subtraction = "__sub";
+        public const string lua_metamethod_multiplication = "__mul";
+        public const string lua_metamethod_division = "__div";
+        public const string lua_metamethod_unaryNegation = "__unm";
+        public const string lua_metamethod_equality = "__eq";
+        public const string lua_metamethod_lessThan = "__lt";
+        public const string lua_metamethod_lessThanOrEqual = "__le";
+        public static string[][] metamethodCollection = new string[][]
+        {
+            new string[] { csharp_operator_addition,        lua_metamethod_addition,        bLuaError.error_operationAddition },
+            new string[] { csharp_operator_subtraction,     lua_metamethod_subtraction,     bLuaError.error_operationSubtraction },
+            new string[] { csharp_operator_multiplication,  lua_metamethod_multiplication,  bLuaError.error_operationMultiply },
+            new string[] { csharp_operator_division,        lua_metamethod_division,        bLuaError.error_operationDivision },
+            new string[] { csharp_operator_unaryNegation,   lua_metamethod_unaryNegation,   bLuaError.error_operationUnaryNegation },
+            new string[] { csharp_operator_equality,        lua_metamethod_equality,        bLuaError.error_operationEquality },
+            new string[] { csharp_operator_lessThan,        lua_metamethod_lessThan,        bLuaError.error_operationLessThan },
+            new string[] { csharp_operator_lessThanOrEqual, lua_metamethod_lessThanOrEqual, bLuaError.error_operationLessThanOrEqual }
+        };
+
+
         static bool GetUserDataEntry(IntPtr _originalState, bLuaInstance _instance, out UserDataRegistryEntry _userDataEntry)
         {
             _userDataEntry = new UserDataRegistryEntry();
@@ -81,29 +112,82 @@ namespace bLua
             return true;
         }
 
-        public static int Metamethod_Addition(IntPtr _state)
+        static bool GetMethodWithParams(object _userdataObject, string _methodName, out MethodInfo _method, params Type[] _paramTypeRequirementsOrdered)
         {
-            return 0;
+            _method = null;
+
+            // Get all methods that have the expected name
+            MethodInfo[] methodInfos = _userdataObject.GetType().GetMethods().Where((mi) => mi.Name == _methodName).ToArray();
+            for (int m = 0; m < methodInfos.Length; m++)
+            {
+                ParameterInfo[] parameterInfos = methodInfos[m].GetParameters();
+
+                // Make sure the parameters on this method match any requirements that have been given to the function
+                if (_paramTypeRequirementsOrdered.Length > parameterInfos.Length)
+                {
+                    continue;
+                }
+                bool parameterRequirementsMatch = true;
+                for (int p = 0; p < _paramTypeRequirementsOrdered.Length; p++)
+                {
+                    if (_paramTypeRequirementsOrdered[p] == null) // null means any type in this case, skip the type check
+                    {
+                        continue;
+                    }
+                    if (_paramTypeRequirementsOrdered[p] != parameterInfos[p].ParameterType)
+                    {
+                        parameterRequirementsMatch = false;
+                        break;
+                    }
+                }
+                if (!parameterRequirementsMatch)
+                {
+                    continue;
+                }
+
+                _method = methodInfos[m];
+                return true;
+            }
+
+            return false;
         }
 
-        public static int Metamethod_Subtraction(IntPtr _state)
+        public static int Metamethod_Operator(IntPtr _state)
         {
-            return 0;
-        }
+            bLuaInstance mainThreadInstance = bLuaInstance.GetInstanceByState(Lua.GetMainThread(_state));
+            IntPtr revertState = mainThreadInstance.state;
 
-        public static int Metamethod_Multiplication(IntPtr _state)
-        {
-            return 0;
-        }
+            try
+            {
+                mainThreadInstance.state = _state;
 
-        public static int Metamethod_Division(IntPtr _state)
-        {
-            return 0;
-        }
+                bLuaValue operandR = Lua.PopStackIntoValue(mainThreadInstance);
+                bLuaValue operandL = Lua.PopStackIntoValue(mainThreadInstance);
 
-        public static int Metamethod_NegationUnary(IntPtr _state)
-        {
-            return 0;
+                Type[] operationMethodParamRequirements = new Type[2] { operandL.ToObject().GetType(), operandR.ToObject().GetType() };
+
+                string operationMethodName = Lua.GetString(revertState, Lua.UpValueIndex(2));
+                string operationError = Lua.GetString(revertState, Lua.UpValueIndex(3));
+
+                MethodInfo operationMethod;
+                if (!GetMethodWithParams(operandL.ToObject(), operationMethodName, out operationMethod, operationMethodParamRequirements))
+                {
+                    if (!GetMethodWithParams(operandR.ToObject(), operationMethodName, out operationMethod, operationMethodParamRequirements))
+                    {
+                        mainThreadInstance.Error($"{operationError}{operandL.ToObject().GetType().Name}, {operandR.ToObject().GetType().Name}");
+                        Lua.PushNil(mainThreadInstance);
+                        return 1;
+                    }
+                }
+
+                object result = operationMethod.Invoke(null, new object[2] { operandL.ToObject(), operandR.ToObject() });
+                Lua.PushOntoStack(mainThreadInstance, result);
+                return 1;
+            }
+            finally
+            {
+                mainThreadInstance.state = revertState;
+            }
         }
 
         public static int Metamethod_Concatenation(IntPtr _state)
@@ -121,17 +205,17 @@ namespace bLua
                 string rhs = operandR.CastToString();
 
                 if (operandL.Type == DataType.UserData
-                    && (string.IsNullOrEmpty(lhs) || operandL.Object.GetType().FullName == lhs))
+                    && (string.IsNullOrEmpty(lhs) || operandL.ToObject().GetType().FullName == lhs))
                 {
-                    mainThreadInstance.Error($"{bLuaError.error_concatenation}{operandL.Object.GetType().Name}");
+                    mainThreadInstance.Error($"{bLuaError.error_concatenation}{operandL.ToObject().GetType().Name}");
                     Lua.PushNil(mainThreadInstance);
                     return 1;
                 }
 
                 if (operandR.Type == DataType.UserData
-                    && (string.IsNullOrEmpty(rhs) || operandR.Object.GetType().FullName == rhs))
+                    && (string.IsNullOrEmpty(rhs) || operandR.ToObject().GetType().FullName == rhs))
                 {
-                    mainThreadInstance.Error($"{bLuaError.error_concatenation}{operandR.Object.GetType().Name}");
+                    mainThreadInstance.Error($"{bLuaError.error_concatenation}{operandR.ToObject().GetType().Name}");
                     Lua.PushNil(mainThreadInstance);
                     return 1;
                 }
@@ -147,21 +231,6 @@ namespace bLua
         }
 
         public static int Metamethod_Length(IntPtr _state)
-        {
-            return 0;
-        }
-
-        public static int Metamethod_Equal(IntPtr _state)
-        {
-            return 0;
-        }
-
-        public static int Metamethod_LessThan(IntPtr _state)
-        {
-            return 0;
-        }
-
-        public static int Metamethod_LessEqual(IntPtr _state)
         {
             return 0;
         }
@@ -357,4 +426,4 @@ namespace bLua
             }
         }
     }
-} // bLua namespace
+} // bLua.Internal namespace

@@ -8,6 +8,7 @@ using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.SceneManagement;
 using bLua.NativeLua;
+using bLua.Internal;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
