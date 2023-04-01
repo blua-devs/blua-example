@@ -65,6 +65,10 @@ namespace bLua
         ThreadMacros = 1024,
         /// <summary> Includes `print(s)` function(s) as globals. </summary>
         HelperMacros = 2048,
+        /// <remarks> WARNING! This may affect performance based on how often your Lua runs userdata methods. </remarks>
+        /// <summary> Makes the syntax sugar `:` optional when calling instance methods on userdata. The symbols `.` and `:` become interchangeable in all cases
+        /// where Lua is calling a userdata method. </summary>
+        ImplicitSyntaxSugar = 4096
     }
 
     /// <summary> Sandboxes are groupings of features that let you select premade feature lists for your bLua environment. </summary>
@@ -85,7 +89,8 @@ namespace bLua
             | Feature.OS
             | Feature.Debug
             | Feature.ThreadMacros
-            | Feature.HelperMacros,
+            | Feature.HelperMacros
+            | Feature.ImplicitSyntaxSugar,
         /// <remarks> WARNING! Some of these features include developer warnings, please review the remarks on individual features. </remarks>
         /// <summary> Includes most Lua and bLua features, specifically ones that might be used commonly in modding. </summary>
         BasicModding = Feature.BasicLibrary

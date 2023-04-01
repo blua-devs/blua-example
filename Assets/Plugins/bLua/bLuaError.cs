@@ -20,6 +20,7 @@ namespace bLua.Internal
         public const string error_invalidMethodIndex = "invalid userdata method index: ";
         public const string error_invalidPropertyIndex = "invalid userdata property index: ";
         public const string error_invalidFieldIndex = "invalid userdata field index: ";
+        public const string error_invalidLiveObjectIndex = "invalid live object index: ";
 
         public const string error_invalidType = "invalid userdata type: ";
         public const string error_invalidMethod = "invalid userdata method: ";
@@ -29,6 +30,7 @@ namespace bLua.Internal
         public const string error_callingFunction = "error calling function: ";
         public const string error_callingDelegate = "error calling delegate: ";
         public const string error_inFunctionCall = "error in function call: ";
+        public const string error_inMetamethodCall = "error in function call: ";
         public const string error_setProperty = "failed to set property: ";
 
         public const string error_objectIsNotUserdata = "object is not userdata: ";

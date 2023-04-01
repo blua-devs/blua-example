@@ -301,11 +301,6 @@ namespace bLua
         /// <summary> Registers a type as Lua userdata. Does not require the [bLuaUserData] attribute unless specified. </summary>
         public static void Register(bLuaInstance _instance, Type _type)
         {
-            if (_type == typeof(object))
-            {
-                return;
-            }
-
             if (IsRegistered(_instance, _type))
             {
                 // Can't register the same type multiple times.
@@ -347,11 +342,9 @@ namespace bLua
                 properties = baseProperties,
             };
             entry.metatable = Lua.NewMetaTable(_instance, _type.Name);
-            entry.metatable.Set("__index",    bLuaValue.CreateClosure(_instance, bLuaMetamethods.Metamethod_Index,          bLuaValue.CreateNumber(_instance, typeIndex)));
-            entry.metatable.Set("__newindex", bLuaValue.CreateClosure(_instance, bLuaMetamethods.Metamethod_NewIndex,       bLuaValue.CreateNumber(_instance, typeIndex)));
-            //entry.metatable.Set("__len",      bLuaValue.CreateClosure(_instance, bLuaMetamethods.Metamethod_Length,         bLuaValue.CreateNumber(_instance, typeIndex)));
-            entry.metatable.Set("__gc",       bLuaValue.CreateClosure(_instance, bLuaMetamethods.MetaMethod_GC,             bLuaValue.CreateNumber(_instance, typeIndex)));
-
+            entry.metatable.Set("__index",    bLuaValue.CreateClosure(_instance, bLuaMetamethods.Metamethod_Index,    bLuaValue.CreateNumber(_instance, typeIndex)));
+            entry.metatable.Set("__newindex", bLuaValue.CreateClosure(_instance, bLuaMetamethods.Metamethod_NewIndex, bLuaValue.CreateNumber(_instance, typeIndex)));
+            entry.metatable.Set("__gc",       bLuaValue.CreateClosure(_instance, bLuaMetamethods.MetaMethod_GC,       bLuaValue.CreateNumber(_instance, typeIndex)));
             for (int i = 0; i < bLuaMetamethods.metamethodCollection.Length; i++)
             {
                 if (_type.GetMethods().FirstOrDefault((mi) => mi.Name == bLuaMetamethods.metamethodCollection[i][0]) != null)
@@ -366,8 +359,8 @@ namespace bLua
             }
             if (_type.GetMethod("ToString") != null)
             {
-                entry.metatable.Set("__concat",   bLuaValue.CreateClosure(_instance, bLuaMetamethods.Metamethod_Concatenation,  bLuaValue.CreateNumber(_instance, typeIndex)));
-                entry.metatable.Set("__tostring", bLuaValue.CreateClosure(_instance, bLuaMetamethods.Metamethod_ToString,       bLuaValue.CreateNumber(_instance, typeIndex)));
+                entry.metatable.Set("__concat",   bLuaValue.CreateClosure(_instance, bLuaMetamethods.Metamethod_Concatenation, bLuaValue.CreateNumber(_instance, typeIndex)));
+                entry.metatable.Set("__tostring", bLuaValue.CreateClosure(_instance, bLuaMetamethods.Metamethod_ToString,      bLuaValue.CreateNumber(_instance, typeIndex)));
             }
 
             _instance.s_typenameToEntryIndex[_type.Name] = typeIndex;

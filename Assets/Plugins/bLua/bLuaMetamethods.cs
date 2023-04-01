@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using bLua;
 using bLua.NativeLua;
+using System.Runtime.CompilerServices;
 
 namespace bLua.Internal
 {
@@ -40,6 +41,7 @@ namespace bLua.Internal
         };
 
 
+        #region Helper functions
         static bool GetUserDataEntry(IntPtr _originalState, bLuaInstance _instance, out UserDataRegistryEntry _userDataEntry)
         {
             _userDataEntry = new UserDataRegistryEntry();
@@ -88,9 +90,9 @@ namespace bLua.Internal
             return true;
         }
 
-        static bool GetLiveObjectInstance(IntPtr _originalState, bLuaInstance _instance, out object _object)
+        static bool GetLiveObjectIndex(IntPtr _originalState, bLuaInstance _instance, out int _liveObjectIndex)
         {
-            _object = null;
+            _liveObjectIndex = -1;
 
             int t = LuaLibAPI.lua_type(_originalState, 1);
             if (t != (int)DataType.UserData)
@@ -107,8 +109,21 @@ namespace bLua.Internal
                 return false;
             }
 
-            int instanceIndex = Lua.PopInteger(_instance);
-            _object = _instance.s_liveObjects[instanceIndex];
+            _liveObjectIndex = Lua.PopInteger(_instance);
+            return true;
+        }
+
+        static bool GetLiveObjectInstance(IntPtr _originalState, bLuaInstance _instance, out object _object)
+        {
+            _object = null;
+
+            int liveObjectIndex;
+            if (!GetLiveObjectIndex(_originalState, _instance, out liveObjectIndex))
+            {
+                return false;
+            }
+            
+            _object = _instance.s_liveObjects[liveObjectIndex];
             return true;
         }
 
@@ -155,7 +170,68 @@ namespace bLua.Internal
             return false;
         }
 
-        public static int Metamethod_Operator(IntPtr _state)
+        static bool GetCallMetamethodUpvalues(IntPtr _originalState, bLuaInstance _instance, out MethodCallInfo _methodInfo, out object _liveObject)
+        {
+            _methodInfo = null;
+            _liveObject = null;
+
+            int m = LuaLibAPI.lua_tointegerx(_originalState, Lua.UpValueIndex(1), IntPtr.Zero);
+            if (m < 0 || m >= _instance.s_methods.Count)
+            {
+                _instance.Error($"{bLuaError.error_invalidMethodIndex}{m}");
+                return false;
+            }
+
+            int l = LuaLibAPI.lua_tointegerx(_originalState, Lua.UpValueIndex(2), IntPtr.Zero);
+            if (l < 0 || l >= _instance.s_liveObjects.Length)
+            {
+                _instance.Error($"{bLuaError.error_invalidLiveObjectIndex}{m}");
+                return false;
+            }
+
+            _methodInfo = _instance.s_methods[m];
+            _liveObject = _instance.s_liveObjects[l];
+
+            return true;
+        }
+
+        static bool PushSyntacticSugarProxy(bLuaInstance _instance, int _methodIndex, int _liveObjectIndex)
+        {
+            bLuaValue metatable = Lua.NewMetaTable(_instance, _liveObjectIndex.ToString());
+            metatable.Set("__call", bLuaValue.CreateClosure(
+                _instance,
+                bLuaMetamethods.Metamethod_Call,
+                bLuaValue.CreateNumber(_instance, _methodIndex),
+                bLuaValue.CreateNumber(_instance, _liveObjectIndex)));
+
+            LuaLibAPI.lua_newuserdatauv(_instance.state, new IntPtr(8), 1);
+            Lua.PushOntoStack(_instance, _methodIndex);
+            LuaLibAPI.lua_setiuservalue(_instance.state, -2, 1);
+            Lua.PushStack(_instance, metatable);
+            LuaLibAPI.lua_setmetatable(_instance.state, -2);
+
+            return true;
+        }
+
+        static bool PopStackIntoArgs(bLuaInstance _instance, MethodCallInfo _methodInfo, object _liveObject, out object[] _args)
+        {
+            bool isExtensionMethod = _methodInfo.methodInfo.IsDefined(typeof(ExtensionAttribute), true);
+
+            _args = new object[_methodInfo.argTypes.Length];
+            if (isExtensionMethod)
+            {
+                _args[0] = _liveObject;
+            }
+            for (int p = isExtensionMethod ? 1 : 0; p < _methodInfo.argTypes.Length; p++)
+            {
+                _args[p] = bLuaUserData.PopStackIntoParamType(_instance, _methodInfo.argTypes[p]);
+            }
+
+            return true;
+        }
+        #endregion // Helper functions
+
+        public static int Metamethod_Call(IntPtr _state)
         {
             bLuaInstance mainThreadInstance = bLuaInstance.GetInstanceByState(Lua.GetMainThread(_state));
             IntPtr revertState = mainThreadInstance.state;
@@ -164,82 +240,35 @@ namespace bLua.Internal
             {
                 mainThreadInstance.state = _state;
 
-                bLuaValue operandR = Lua.PopStackIntoValue(mainThreadInstance);
-                bLuaValue operandL = Lua.PopStackIntoValue(mainThreadInstance);
-
-                Type[] operationMethodParamRequirements = new Type[2] { operandL.ToObject().GetType(), operandR.ToObject().GetType() };
-
-                string operationMethodName = Lua.GetString(revertState, Lua.UpValueIndex(2));
-                string operationError = Lua.GetString(revertState, Lua.UpValueIndex(3));
-
-                MethodInfo operationMethod;
-                if (!GetMethodWithParams(operandL.ToObject(), operationMethodName, out operationMethod, operationMethodParamRequirements))
+                MethodCallInfo methodInfo;
+                object liveObject;
+                if (!GetCallMetamethodUpvalues(_state, mainThreadInstance, out methodInfo, out liveObject))
                 {
-                    if (!GetMethodWithParams(operandR.ToObject(), operationMethodName, out operationMethod, operationMethodParamRequirements))
-                    {
-                        mainThreadInstance.Error($"{operationError}{operandL.ToObject().GetType().Name}, {operandR.ToObject().GetType().Name}");
-                        Lua.PushNil(mainThreadInstance);
-                        return 1;
-                    }
+                    mainThreadInstance.Error($"{bLuaError.error_inMetamethodCall}nil");
+                    return 0;
                 }
 
-                object[] args = new object[operationMethod.GetParameters().Length];
-                if (args.Length >= 1) args[0] = operandL.ToObject();
-                if (args.Length >= 2) args[1] = operandR.ToObject();
+                object[] args;
+                if (!PopStackIntoArgs(mainThreadInstance, methodInfo, liveObject, out args))
+                {
+                    mainThreadInstance.Error($"{bLuaError.error_inMetamethodCall}nil");
+                    return 0;
+                }
 
-                object result = operationMethod.Invoke(null, args);
-                Lua.PushOntoStack(mainThreadInstance, result);
+                object result = methodInfo.methodInfo.Invoke(liveObject, args);
+                bLuaUserData.PushReturnTypeOntoStack(mainThreadInstance, methodInfo.returnType, result);
+                return 1;
+            }
+            catch (Exception e)
+            {
+                mainThreadInstance.ExceptionError(e, bLuaError.error_objectNotProvided);
+                Lua.PushNil(mainThreadInstance);
                 return 1;
             }
             finally
             {
                 mainThreadInstance.state = revertState;
             }
-        }
-
-        public static int Metamethod_Concatenation(IntPtr _state)
-        {
-            bLuaInstance mainThreadInstance = bLuaInstance.GetInstanceByState(Lua.GetMainThread(_state));
-            IntPtr revertState = mainThreadInstance.state;
-
-            try
-            {
-                mainThreadInstance.state = _state;
-
-                bLuaValue operandR = Lua.PopStackIntoValue(mainThreadInstance);
-                bLuaValue operandL = Lua.PopStackIntoValue(mainThreadInstance);
-                string lhs = operandL.CastToString();
-                string rhs = operandR.CastToString();
-
-                if (operandL.Type == DataType.UserData
-                    && (string.IsNullOrEmpty(lhs) || operandL.ToObject().GetType().FullName == lhs))
-                {
-                    mainThreadInstance.Error($"{bLuaError.error_concatenation}{operandL.ToObject().GetType().Name}");
-                    Lua.PushNil(mainThreadInstance);
-                    return 1;
-                }
-
-                if (operandR.Type == DataType.UserData
-                    && (string.IsNullOrEmpty(rhs) || operandR.ToObject().GetType().FullName == rhs))
-                {
-                    mainThreadInstance.Error($"{bLuaError.error_concatenation}{operandR.ToObject().GetType().Name}");
-                    Lua.PushNil(mainThreadInstance);
-                    return 1;
-                }
-
-                string result = lhs + rhs;
-                bLuaUserData.PushReturnTypeOntoStack(mainThreadInstance, MethodCallInfo.ParamType.Str, result);
-                return 1;
-            }
-            finally
-            {
-                mainThreadInstance.state = revertState;
-            }
-        }
-
-        public static int Metamethod_Length(IntPtr _state)
-        {
-            return 0;
         }
 
         public static int Metamethod_Index(IntPtr _state)
@@ -268,8 +297,26 @@ namespace bLua.Internal
                 {
                     case UserDataRegistryEntry.PropertyEntry.Type.Method:
                         {
-                            int val = Lua.PushStack(mainThreadInstance, mainThreadInstance.s_methods[propertyEntry.index].closure);
-                            return 1;
+                            if (mainThreadInstance.FeatureEnabled(Feature.ImplicitSyntaxSugar))
+                            {
+                                int liveObjectIndex;
+                                if (!GetLiveObjectIndex(_state, mainThreadInstance, out liveObjectIndex))
+                                {
+                                    return 0;
+                                }
+
+                                if (!PushSyntacticSugarProxy(mainThreadInstance, propertyEntry.index, liveObjectIndex))
+                                {
+                                    return 0;
+                                }
+
+                                return 1;
+                            }
+                            else
+                            {
+                                Lua.PushStack(mainThreadInstance, mainThreadInstance.s_methods[propertyEntry.index].closure);
+                                return 1;
+                            }
                         }
                     case UserDataRegistryEntry.PropertyEntry.Type.Property:
                         {
@@ -391,6 +438,88 @@ namespace bLua.Internal
             mainThreadInstance.s_liveObjectsFreeList.Add(n);
 
             return 0;
+        }
+
+        public static int Metamethod_Operator(IntPtr _state)
+        {
+            bLuaInstance mainThreadInstance = bLuaInstance.GetInstanceByState(Lua.GetMainThread(_state));
+            IntPtr revertState = mainThreadInstance.state;
+
+            try
+            {
+                mainThreadInstance.state = _state;
+
+                bLuaValue operandR = Lua.PopStackIntoValue(mainThreadInstance);
+                bLuaValue operandL = Lua.PopStackIntoValue(mainThreadInstance);
+
+                Type[] operationMethodParamRequirements = new Type[2] { operandL.ToObject().GetType(), operandR.ToObject().GetType() };
+
+                string operationMethodName = Lua.GetString(revertState, Lua.UpValueIndex(2));
+                string operationError = Lua.GetString(revertState, Lua.UpValueIndex(3));
+
+                MethodInfo operationMethod;
+                if (!GetMethodWithParams(operandL.ToObject(), operationMethodName, out operationMethod, operationMethodParamRequirements))
+                {
+                    if (!GetMethodWithParams(operandR.ToObject(), operationMethodName, out operationMethod, operationMethodParamRequirements))
+                    {
+                        mainThreadInstance.Error($"{operationError}{operandL.ToObject().GetType().Name}, {operandR.ToObject().GetType().Name}");
+                        Lua.PushNil(mainThreadInstance);
+                        return 1;
+                    }
+                }
+
+                object[] args = new object[operationMethod.GetParameters().Length];
+                if (args.Length >= 1) args[0] = operandL.ToObject();
+                if (args.Length >= 2) args[1] = operandR.ToObject();
+
+                object result = operationMethod.Invoke(null, args);
+                Lua.PushOntoStack(mainThreadInstance, result);
+                return 1;
+            }
+            finally
+            {
+                mainThreadInstance.state = revertState;
+            }
+        }
+
+        public static int Metamethod_Concatenation(IntPtr _state)
+        {
+            bLuaInstance mainThreadInstance = bLuaInstance.GetInstanceByState(Lua.GetMainThread(_state));
+            IntPtr revertState = mainThreadInstance.state;
+
+            try
+            {
+                mainThreadInstance.state = _state;
+
+                bLuaValue operandR = Lua.PopStackIntoValue(mainThreadInstance);
+                bLuaValue operandL = Lua.PopStackIntoValue(mainThreadInstance);
+                string lhs = operandL.CastToString();
+                string rhs = operandR.CastToString();
+
+                if (operandL.Type == DataType.UserData
+                    && (string.IsNullOrEmpty(lhs) || operandL.ToObject().GetType().FullName == lhs))
+                {
+                    mainThreadInstance.Error($"{bLuaError.error_concatenation}{operandL.ToObject().GetType().Name}");
+                    Lua.PushNil(mainThreadInstance);
+                    return 1;
+                }
+
+                if (operandR.Type == DataType.UserData
+                    && (string.IsNullOrEmpty(rhs) || operandR.ToObject().GetType().FullName == rhs))
+                {
+                    mainThreadInstance.Error($"{bLuaError.error_concatenation}{operandR.ToObject().GetType().Name}");
+                    Lua.PushNil(mainThreadInstance);
+                    return 1;
+                }
+
+                string result = lhs + rhs;
+                bLuaUserData.PushReturnTypeOntoStack(mainThreadInstance, MethodCallInfo.ParamType.Str, result);
+                return 1;
+            }
+            finally
+            {
+                mainThreadInstance.state = revertState;
+            }
         }
 
         public static int Metamethod_ToString(IntPtr _state)
