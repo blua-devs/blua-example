@@ -187,6 +187,7 @@ namespace bLua
         public Dictionary<string, int> s_typenameToEntryIndex = new Dictionary<string, int>();
 
         public object[] s_liveObjects = new object[65536];
+        public object[] s_syntaxSugarProxies = new object[65536];
 
         public List<int> s_liveObjectsFreeList = new List<int>();
 
@@ -1068,9 +1069,6 @@ namespace bLua
             }
         }
         #endregion // C Functions called from Lua
-
-        #region C Metamethods
-        #endregion // C Metamethods
 
         #region Userdata
         /// <summary> Registers all C# types in all assemblies with the [bLuaUserData] attribute as Lua userdata on this particular instance. </summary>

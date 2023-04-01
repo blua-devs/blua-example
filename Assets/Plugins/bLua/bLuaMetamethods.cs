@@ -197,6 +197,18 @@ namespace bLua.Internal
 
         static bool PushSyntacticSugarProxy(bLuaInstance _instance, int _methodIndex, int _liveObjectIndex)
         {
+            if (_liveObjectIndex < 0 || _liveObjectIndex > _instance.s_syntaxSugarProxies.Length)
+            {
+                _instance.Error($"{bLuaError.error_invalidLiveObjectIndex}{_liveObjectIndex}");
+                return false;
+            }
+
+            LuaLibAPI.lua_newuserdatauv(_instance.state, new IntPtr(8), 1);
+            object syntaxSugarProxy = Lua.PopStackIntoObject(_instance);
+            Lua.PushOntoStack(_instance, syntaxSugarProxy);
+
+            _instance.s_syntaxSugarProxies[_liveObjectIndex] = syntaxSugarProxy;
+
             bLuaValue metatable = Lua.NewMetaTable(_instance, _liveObjectIndex.ToString());
             metatable.Set("__call", bLuaValue.CreateClosure(
                 _instance,
@@ -204,7 +216,7 @@ namespace bLua.Internal
                 bLuaValue.CreateNumber(_instance, _methodIndex),
                 bLuaValue.CreateNumber(_instance, _liveObjectIndex)));
 
-            LuaLibAPI.lua_newuserdatauv(_instance.state, new IntPtr(8), 1);
+            Lua.PushOntoStack(_instance, _instance.s_syntaxSugarProxies[_liveObjectIndex]);
             Lua.PushOntoStack(_instance, _methodIndex);
             LuaLibAPI.lua_setiuservalue(_instance.state, -2, 1);
             Lua.PushStack(_instance, metatable);
