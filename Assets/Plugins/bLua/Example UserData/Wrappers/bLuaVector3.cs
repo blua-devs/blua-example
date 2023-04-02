@@ -56,7 +56,10 @@ namespace bLua.ExampleUserData
         {
             return $"({x}, {y}, {z})";
         }
-
+        public static implicit operator string(bLuaVector3 v)
+        {
+            return v.ToString();
+        }
         public static implicit operator Vector3(bLuaVector3 v)
         {
             return v.__vector3;
