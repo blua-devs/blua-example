@@ -170,34 +170,27 @@ namespace bLua
         /// <summary> Contains the current Lua state (https://www.lua.org/manual/5.4/manual.html#lua_newstate). </summary>
         public IntPtr state;
 
-        public int s_stringCacheHit = 0, s_stringCacheMiss = 0;
-
-        public StringCacheEntry[] s_stringCache = new StringCacheEntry[997];
-
-        Dictionary<string, bLuaValue> s_internedStrings = new Dictionary<string, bLuaValue>();
-
+        public int stringCacheHit = 0, stringCacheMiss = 0;
+        public StringCacheEntry[] stringCache = new StringCacheEntry[997];
+        Dictionary<string, bLuaValue> internedStrings = new Dictionary<string, bLuaValue>();
         Dictionary<string, bLuaValue> lookups = new Dictionary<string, bLuaValue>();
 
-        // Whenever we add a method we just add it to this list to be indexed
-        public List<MethodCallInfo> s_methods = new List<MethodCallInfo>();
-        public List<PropertyCallInfo> s_properties = new List<PropertyCallInfo>();
-        public List<FieldCallInfo> s_fields = new List<FieldCallInfo>();
+        public List<MethodCallInfo> registeredMethods = new List<MethodCallInfo>();
+        public List<PropertyCallInfo> registeredProperties = new List<PropertyCallInfo>();
+        public List<FieldCallInfo> registeredFields = new List<FieldCallInfo>();
+        public List<UserDataRegistryEntry> registeredEntries = new List<UserDataRegistryEntry>();
+        public Dictionary<string, int> typenameToEntryIndex = new Dictionary<string, int>();
 
-        public List<UserDataRegistryEntry> s_entries = new List<UserDataRegistryEntry>();
-        public Dictionary<string, int> s_typenameToEntryIndex = new Dictionary<string, int>();
-
-        public object[] s_liveObjects = new object[65536];
-        public object[] s_syntaxSugarProxies = new object[65536];
-
-        public List<int> s_liveObjectsFreeList = new List<int>();
-
-        public int s_nNextLiveObject = 1;
+        public object[] liveObjects = new object[65536];
+        public object[] syntaxSugarProxies = new object[65536];
+        public List<int> liveObjectsFreeList = new List<int>();
+        public int nextLiveObject = 1;
 
         public int numLiveObjects
         {
             get
             {
-                return (s_nNextLiveObject - 1) - s_liveObjectsFreeList.Count;
+                return (nextLiveObject - 1) - liveObjectsFreeList.Count;
             }
         }
 
@@ -227,7 +220,6 @@ namespace bLua
         #region Initialization
         /// <summary> Whether or not bLua has been initialized. </summary>
         bool initialized = false;
-        
         bool reinitializing = false;
 
 
@@ -492,7 +484,7 @@ namespace bLua
             while (!requestStopTicking)
             {
                 if (settings.tickBehavior != bLuaSettings.TickBehavior.TickOnlyWhenCoroutinesActive
-                    || (settings.tickBehavior == bLuaSettings.TickBehavior.TickOnlyWhenCoroutinesActive && numRunningCoroutines > 0))
+                    || (settings.tickBehavior == bLuaSettings.TickBehavior.TickOnlyWhenCoroutinesActive && runningCoroutines > 0))
                 {
                     InternalTick();
                 }
@@ -544,12 +536,12 @@ namespace bLua
 
         List<ScheduledCoroutine> scheduledCoroutines = new List<ScheduledCoroutine>();
 
-        int ncoroutine = 0;
+        int coroutineID = 0;
 
 
         void TickCoroutines()
         {
-            using (Lua.s_profileLuaCo.Auto())
+            using (Lua.profile_luaCo.Auto())
             {
                 Call(updateco);
 
@@ -565,16 +557,16 @@ namespace bLua
 
         void ScheduleCoroutine(bLuaValue _fn, params object[] _args)
         {
-            ++ncoroutine;
+            ++coroutineID;
             scheduledCoroutines.Add(new ScheduledCoroutine()
             {
                 fn = _fn,
                 args = _args,
-                debugTag = ncoroutine,
+                debugTag = coroutineID,
             });
         }
 
-        int numRunningCoroutines
+        int runningCoroutines
         {
             get
             {
@@ -620,7 +612,7 @@ namespace bLua
         #endregion // Globals
 
         #region Errors
-        public delegate void LuaErrorDelegate(string message, string engineTrace = null);
+        public delegate void LuaErrorDelegate(string _message, string _engineTrace = null);
         /// <summary> This delegate is called whenever a Lua Error happens. Allows for bLua features (or developers) to listen. </summary>
         public LuaErrorDelegate LuaErrorHandler;
 
@@ -678,7 +670,7 @@ namespace bLua
                 return;
             }
 
-            using (Lua.s_profileLuaCall.Auto())
+            using (Lua.profile_luaCall.Auto())
             {
                 int result = LuaXLibAPI.luaL_loadbufferx(state, _text, (ulong)_text.Length, _name, null); // S: (buffer)
                 if (result != 0)
@@ -698,7 +690,7 @@ namespace bLua
                     LuaLibAPI.lua_setupvalue(state, -2, 1); // assigns -1 stack index to the upvalue for value in stack at index. S: (bufferWithEnvUpvalue)
                 }
 
-                using (Lua.s_profileLuaCallInner.Auto())
+                using (Lua.profile_luaCallInner.Auto())
                 {
                     result = LuaLibAPI.lua_pcallk(state, 0, _nresults, 0, 0, IntPtr.Zero);
                 }
@@ -724,7 +716,7 @@ namespace bLua
                 return null;
             }
 
-            using (Lua.s_profileLuaCall.Auto())
+            using (Lua.profile_luaCall.Auto())
             {
                 Lua.PushStack(this, _fn);
 
@@ -735,7 +727,7 @@ namespace bLua
 
                 int result;
                 //TODO set the error handler to get the stack trace.
-                using (Lua.s_profileLuaCallInner.Auto())
+                using (Lua.profile_luaCallInner.Auto())
                 {
                     result = LuaLibAPI.lua_pcallk(state, _args.Length, 1, 0, 0L, IntPtr.Zero);
                 }
@@ -766,13 +758,13 @@ namespace bLua
         public bLuaValue InternString(string s)
         {
             bLuaValue result;
-            if (s_internedStrings.TryGetValue(s, out result))
+            if (internedStrings.TryGetValue(s, out result))
             {
                 return result;
             }
 
             result = bLuaValue.CreateString(this, s);
-            s_internedStrings.Add(s, result);
+            internedStrings.Add(s, result);
             return result;
         }
 
@@ -797,13 +789,13 @@ namespace bLua
 
                 int n = LuaLibAPI.lua_tointegerx(_state, Lua.UpValueIndex(1), IntPtr.Zero);
 
-                if (n < 0 || n >= mainThreadInstance.s_methods.Count)
+                if (n < 0 || n >= mainThreadInstance.registeredMethods.Count)
                 {
                     mainThreadInstance.Error($"{bLuaError.error_invalidMethodIndex}{n}");
                     return 0;
                 }
 
-                MethodCallInfo methodCallInfo = mainThreadInstance.s_methods[n];
+                MethodCallInfo methodCallInfo = mainThreadInstance.registeredMethods[n];
                 DelegateCallInfo info = methodCallInfo as DelegateCallInfo;
 
                 object[] parms = null;
@@ -893,13 +885,13 @@ namespace bLua
 
                 int n = LuaLibAPI.lua_tointegerx(_state, Lua.UpValueIndex(1), IntPtr.Zero);
 
-                if (n < 0 || n >= mainThreadInstance.s_methods.Count)
+                if (n < 0 || n >= mainThreadInstance.registeredMethods.Count)
                 {
                     mainThreadInstance.Error($"{bLuaError.error_invalidMethodIndex}{n}");
                     return 0;
                 }
 
-                MethodCallInfo info = mainThreadInstance.s_methods[n];
+                MethodCallInfo info = mainThreadInstance.registeredMethods[n];
 
                 object[] parms = null;
                 int parmsIndex = 0;
@@ -971,7 +963,7 @@ namespace bLua
                     return 0;
                 }
                 int liveObjectIndex = LuaLibAPI.lua_tointegerx(_state, -1, IntPtr.Zero);
-                object obj = mainThreadInstance.s_liveObjects[liveObjectIndex];
+                object obj = mainThreadInstance.liveObjects[liveObjectIndex];
 
                 object result = info.methodInfo.Invoke(obj, args);
 
@@ -1000,7 +992,7 @@ namespace bLua
                 mainThreadInstance.state = _state;
 
                 int n = LuaLibAPI.lua_tointegerx(_state, Lua.UpValueIndex(1), IntPtr.Zero);
-                MethodCallInfo info = mainThreadInstance.s_methods[n];
+                MethodCallInfo info = mainThreadInstance.registeredMethods[n];
 
                 int stackSize = LuaLibAPI.lua_gettop(_state);
 

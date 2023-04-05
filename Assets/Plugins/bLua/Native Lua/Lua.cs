@@ -32,9 +32,9 @@ namespace bLua.NativeLua
     public static class Lua
     {
 #if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
-        public const string dllName = "lua54.dll";
+        public const string LUA_DLL = "lua54.dll";
 #elif UNITY_EDITOR_OSX || UNITY_STANDALONE_OSX
-        public const string dllName = "Lua";
+        public const string LUA_DLL = "Lua";
 #endif
 
         public static int LUA_TNONE = -1;
@@ -45,12 +45,12 @@ namespace bLua.NativeLua
         public static int LUA_RIDX_GLOBALS = 2;
         public static int LUA_RIDX_LAST = LUA_RIDX_GLOBALS;
 
-        public static ProfilerMarker s_profileLuaGC = new ProfilerMarker("Lua.GC");
-        public static ProfilerMarker s_profileLuaCo = new ProfilerMarker("Lua.Coroutine");
-        public static ProfilerMarker s_profileLuaCall = new ProfilerMarker("Lua.Call");
-        public static ProfilerMarker s_profileLuaCallInner = new ProfilerMarker("Lua.CallInner");
+        public static ProfilerMarker profile_luaGC = new ProfilerMarker("Lua.GC");
+        public static ProfilerMarker profile_luaCo = new ProfilerMarker("Lua.Coroutine");
+        public static ProfilerMarker profile_luaCall = new ProfilerMarker("Lua.Call");
+        public static ProfilerMarker profile_luaCallInner = new ProfilerMarker("Lua.CallInner");
 
-        static StrLen s_strlen = new StrLen();
+        static StrLen strlen = new StrLen();
 
 
         #region Miscellaneous
@@ -85,25 +85,25 @@ namespace bLua.NativeLua
             return System.Text.UTF8Encoding.UTF8.GetString(_bytes);
         }
 
-        public static int UpValueIndex(int _i)
+        public static int UpValueIndex(int i)
         {
-            return LUA_REGISTRYINDEX - _i;
+            return LUA_REGISTRYINDEX - i;
         }
 
-        public static string GetString(IntPtr _state, int _n)
+        public static string GetString(IntPtr _state, int n)
         {
-            var ptr = LuaLibAPI.lua_tolstring(_state, _n, s_strlen);
-            byte[] bytes = new byte[s_strlen.len];
-            Marshal.Copy(ptr, bytes, 0, (int)s_strlen.len);
+            var ptr = LuaLibAPI.lua_tolstring(_state, n, strlen);
+            byte[] bytes = new byte[strlen.len];
+            Marshal.Copy(ptr, bytes, 0, (int)strlen.len);
             return UTF8ToStr(bytes);
         }
 
-        public static void DestroyDynValue(bLuaInstance _instance, int _refid)
+        public static void DestroyDynValue(bLuaInstance _instance, int _referenceID)
         {
             if (_instance.state != IntPtr.Zero)
             {
                 //remove the value from the registry.
-                LuaXLibAPI.luaL_unref(_instance.state, LUA_REGISTRYINDEX, _refid);
+                LuaXLibAPI.luaL_unref(_instance.state, LUA_REGISTRYINDEX, _referenceID);
             }
         }
 
@@ -178,7 +178,7 @@ namespace bLua.NativeLua
             }
 
             LuaCFunction fn = bLuaInstance.CallDelegate;
-            bLuaValue[] upvalues = new bLuaValue[1] { bLuaValue.CreateNumber(_instance, _instance.s_methods.Count) };
+            bLuaValue[] upvalues = new bLuaValue[1] { bLuaValue.CreateNumber(_instance, _instance.registeredMethods.Count) };
 
             DelegateCallInfo methodCallInfo = new DelegateCallInfo()
             {
@@ -189,7 +189,7 @@ namespace bLua.NativeLua
                 closure = bLuaValue.CreateClosure(_instance, fn, upvalues),
                 multicastDelegate = _func
             };
-            _instance.s_methods.Add(methodCallInfo);
+            _instance.registeredMethods.Add(methodCallInfo);
 
             PushClosure(_instance, fn, upvalues);
         }
@@ -273,14 +273,14 @@ namespace bLua.NativeLua
                 return (int)DataType.Nil;
             }
 
-            return LuaLibAPI.lua_rawgeti(_instance.state, LUA_REGISTRYINDEX, _value.refid);
+            return LuaLibAPI.lua_rawgeti(_instance.state, LUA_REGISTRYINDEX, _value.referenceID);
         }
         #endregion // Push (Stack)
 
         #region Pop (Stack)
-        public static void LuaPop(IntPtr _state, int _n)
+        public static void LuaPop(IntPtr _state, int n)
         {
-            LuaLibAPI.lua_settop(_state, -(_n) - 1);
+            LuaLibAPI.lua_settop(_state, -(n) - 1);
         }
 
         public static bLuaValue PopStackIntoValue(bLuaInstance _instance)
@@ -477,30 +477,30 @@ namespace bLua.NativeLua
         #endregion // Pop (Stack)
 
         #region New Values
-        public static bLuaValue NewMetaTable(bLuaInstance _instance, string tname)
+        public static bLuaValue NewMetaTable(bLuaInstance _instance, string _name)
         {
-            LuaXLibAPI.luaL_newmetatable(_instance.state, tname);
+            LuaXLibAPI.luaL_newmetatable(_instance.state, _name);
             return PopStackIntoValue(_instance);
         }
 
-        public static bLuaValue NewBoolean(bLuaInstance _instance, bool val)
+        public static bLuaValue NewBoolean(bLuaInstance _instance, bool _value)
         {
             LuaLibAPI.lua_checkstack(_instance.state, 1);
-            LuaLibAPI.lua_pushboolean(_instance.state, val ? 1 : 0);
+            LuaLibAPI.lua_pushboolean(_instance.state, _value ? 1 : 0);
             return PopStackIntoValue(_instance);
         }
 
-        public static bLuaValue NewNumber(bLuaInstance _instance, double val)
+        public static bLuaValue NewNumber(bLuaInstance _instance, double _value)
         {
             LuaLibAPI.lua_checkstack(_instance.state, 1);
-            LuaLibAPI.lua_pushnumber(_instance.state, val);
+            LuaLibAPI.lua_pushnumber(_instance.state, _value);
             return PopStackIntoValue(_instance);
         }
 
-        public static bLuaValue NewString(bLuaInstance _instance, string val)
+        public static bLuaValue NewString(bLuaInstance _instance, string _value)
         {
             LuaLibAPI.lua_checkstack(_instance.state, 1);
-            PushOntoStack(_instance, val);
+            PushOntoStack(_instance, _value);
             return PopStackIntoValue(_instance);
         }
         #endregion // New Values
@@ -528,9 +528,9 @@ namespace bLua.NativeLua
         #endregion // Tables
 
         #region Arrays
-        public static int Length(bLuaInstance _instance, bLuaValue val)
+        public static int Length(bLuaInstance _instance, bLuaValue _value)
         {
-            PushStack(_instance, val);
+            PushStack(_instance, _value);
             uint result = LuaLibAPI.lua_rawlen(_instance.state, -1);
             PopStack(_instance);
 
@@ -538,38 +538,38 @@ namespace bLua.NativeLua
         }
 
         //index -- remember, 1-based!
-        public static bLuaValue Index(bLuaInstance _instance, bLuaValue val, int index)
+        public static bLuaValue Index(bLuaInstance _instance, bLuaValue _value, int i)
         {
             LuaLibAPI.lua_checkstack(_instance.state, 3);
-            PushStack(_instance, val);
-            LuaLibAPI.lua_geti(_instance.state, -1, index);
+            PushStack(_instance, _value);
+            LuaLibAPI.lua_geti(_instance.state, -1, i);
             var result = PopStackIntoValue(_instance);
             PopStack(_instance);
             return result;
         }
 
-        public static void SetIndex(bLuaInstance _instance, bLuaValue array, int index, bLuaValue newVal)
+        public static void SetIndex(bLuaInstance _instance, bLuaValue _array, int i, bLuaValue _newValue)
         {
-            PushStack(_instance, array);
-            PushStack(_instance, newVal);
-            LuaLibAPI.lua_seti(_instance.state, -2, index);
+            PushStack(_instance, _array);
+            PushStack(_instance, _newValue);
+            LuaLibAPI.lua_seti(_instance.state, -2, i);
             PopStack(_instance);
         }
 
-        public static void AppendArray(bLuaInstance _instance, bLuaValue array, bLuaValue newVal)
+        public static void AppendArray(bLuaInstance _instance, bLuaValue _array, bLuaValue _newValue)
         {
-            PushStack(_instance, array);
+            PushStack(_instance, _array);
             int len = (int)LuaLibAPI.lua_rawlen(_instance.state, -1);
-            PushStack(_instance, newVal);
+            PushStack(_instance, _newValue);
             LuaLibAPI.lua_seti(_instance.state, -2, len + 1);
             PopStack(_instance);
         }
 
-        public static void AppendArray(bLuaInstance _instance, bLuaValue array, object newVal)
+        public static void AppendArray(bLuaInstance _instance, bLuaValue _array, object _newValue)
         {
-            PushStack(_instance, array);
+            PushStack(_instance, _array);
             int len = (int)LuaLibAPI.lua_rawlen(_instance.state, -1);
-            PushOntoStack(_instance, newVal);
+            PushOntoStack(_instance, _newValue);
             LuaLibAPI.lua_seti(_instance.state, -2, len + 1);
             PopStack(_instance);
         }

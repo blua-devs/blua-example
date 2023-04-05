@@ -140,7 +140,7 @@ namespace bLua
 
             int liveObjectIndex = LuaLibAPI.lua_tointegerx(_instance.state, -1, IntPtr.Zero);
 
-            object obj = _instance.s_liveObjects[liveObjectIndex];
+            object obj = _instance.liveObjects[liveObjectIndex];
 
             Lua.PopStack(_instance);
 
@@ -158,7 +158,7 @@ namespace bLua
         {
             List<DebugEntry> entries = new List<DebugEntry>();
             Dictionary<string, int> types = new Dictionary<string, int>();
-            foreach (object p in _instance.s_liveObjects)
+            foreach (object p in _instance.liveObjects)
             {
                 if (p == null)
                 {
@@ -205,37 +205,37 @@ namespace bLua
             }
 
             int typeIndex;
-            if (_instance.s_typenameToEntryIndex.TryGetValue(_object.GetType().Name, out typeIndex) == false)
+            if (_instance.typenameToEntryIndex.TryGetValue(_object.GetType().Name, out typeIndex) == false)
             {
                 Debug.LogError($"Type {_object.GetType().Name} is not marked as a user data. Register it with `bLuaUserData.Register`, `bLuaInstance.RegisterUserData`, or add the [bLuaUserData] attribute and have your bLuaInstance auto register all bLuaUserData.");
                 Lua.PushNil(_instance);
                 return;
             }
 
-            UserDataRegistryEntry entry = _instance.s_entries[typeIndex];
+            UserDataRegistryEntry entry = _instance.registeredEntries[typeIndex];
 
             // Work out the index of the new object
             int objIndex;
-            if (_instance.s_liveObjectsFreeList.Count > 0)
+            if (_instance.liveObjectsFreeList.Count > 0)
             {
-                objIndex = _instance.s_liveObjectsFreeList[_instance.s_liveObjectsFreeList.Count - 1];
-                _instance.s_liveObjectsFreeList.RemoveAt(_instance.s_liveObjectsFreeList.Count - 1);
+                objIndex = _instance.liveObjectsFreeList[_instance.liveObjectsFreeList.Count - 1];
+                _instance.liveObjectsFreeList.RemoveAt(_instance.liveObjectsFreeList.Count - 1);
             }
             else
             {
-                if (_instance.s_nNextLiveObject >= _instance.s_liveObjects.Length)
+                if (_instance.nextLiveObject >= _instance.liveObjects.Length)
                 {
-                    object[] liveObjects = new object[_instance.s_liveObjects.Length * 2];
-                    for (int i = 0; i < _instance.s_liveObjects.Length; ++i)
+                    object[] liveObjects = new object[_instance.liveObjects.Length * 2];
+                    for (int i = 0; i < _instance.liveObjects.Length; ++i)
                     {
-                        liveObjects[i] = _instance.s_liveObjects[i];
+                        liveObjects[i] = _instance.liveObjects[i];
                     }
 
-                    _instance.s_liveObjects = liveObjects;
+                    _instance.liveObjects = liveObjects;
                 }
 
-                objIndex = _instance.s_nNextLiveObject;
-                _instance.s_nNextLiveObject++;
+                objIndex = _instance.nextLiveObject;
+                _instance.nextLiveObject++;
             }
 
             LuaLibAPI.lua_newuserdatauv(_instance.state, new IntPtr(8), 1);
@@ -246,7 +246,7 @@ namespace bLua
 
             string msg = Lua.TraceMessage(_instance, "live object");
 
-            _instance.s_liveObjects[objIndex] = _object;
+            _instance.liveObjects[objIndex] = _object;
         }
 
         public static bool IsBLuaUserData(Type _type)
@@ -256,7 +256,7 @@ namespace bLua
 
         public static bool IsRegistered(bLuaInstance _instance, Type _type)
         {
-            return _instance.s_typenameToEntryIndex.ContainsKey(_type.Name);
+            return _instance.typenameToEntryIndex.ContainsKey(_type.Name);
         }
 
         static bool AreAllBaseTypesRegistered(bLuaInstance _instance, Type _type)
@@ -317,9 +317,9 @@ namespace bLua
                     Register(_instance, _type.BaseType);
                 }
 
-                if (_instance.s_typenameToEntryIndex.ContainsKey(_type.BaseType.Name))
+                if (_instance.typenameToEntryIndex.ContainsKey(_type.BaseType.Name))
                 {
-                    baseProperties = new Dictionary<string, UserDataRegistryEntry.PropertyEntry>(_instance.s_entries[_instance.s_typenameToEntryIndex[_type.BaseType.Name]].properties);
+                    baseProperties = new Dictionary<string, UserDataRegistryEntry.PropertyEntry>(_instance.registeredEntries[_instance.typenameToEntryIndex[_type.BaseType.Name]].properties);
                 }
             }
 
@@ -334,7 +334,7 @@ namespace bLua
                 }
             }
 
-            int typeIndex = _instance.s_entries.Count;
+            int typeIndex = _instance.registeredEntries.Count;
 
             UserDataRegistryEntry entry = new UserDataRegistryEntry()
             {
@@ -363,7 +363,7 @@ namespace bLua
                 entry.metatable.Set("__tostring", bLuaValue.CreateClosure(_instance, bLuaMetamethods.Metamethod_ToString,      bLuaValue.CreateNumber(_instance, typeIndex)));
             }
 
-            _instance.s_typenameToEntryIndex[_type.Name] = typeIndex;
+            _instance.typenameToEntryIndex[_type.Name] = typeIndex;
 
             BindingFlags bindingFlags = BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static;
             if (!AreAllBaseTypesRegistered(_instance, _type))
@@ -419,19 +419,19 @@ namespace bLua
                 UserDataRegistryEntry.PropertyEntry propertyEntry = new UserDataRegistryEntry.PropertyEntry()
                 {
                     propertyType = UserDataRegistryEntry.PropertyEntry.Type.Method,
-                    index = _instance.s_methods.Count,
+                    index = _instance.registeredMethods.Count,
                 };
 
                 if (isExtensionMethod)
                 {
                     int extensionTypeIndex;
-                    if (_instance.s_typenameToEntryIndex.TryGetValue(methodParams[0].ParameterType.Name, out extensionTypeIndex) == false)
+                    if (_instance.typenameToEntryIndex.TryGetValue(methodParams[0].ParameterType.Name, out extensionTypeIndex) == false)
                     {
                         Debug.LogError($"Tried to register extension method ({methodInfo.Name}) but the type it extends ({methodParams[0].ParameterType.Name}) isn't registered.");
                         continue;
                     }
-                    UserDataRegistryEntry extensionTypeEntry = _instance.s_entries[extensionTypeIndex];
-                    _instance.s_entries[extensionTypeIndex].properties[methodInfo.Name] = propertyEntry;
+                    UserDataRegistryEntry extensionTypeEntry = _instance.registeredEntries[extensionTypeIndex];
+                    _instance.registeredEntries[extensionTypeIndex].properties[methodInfo.Name] = propertyEntry;
                 }
                 else
                 {
@@ -448,13 +448,13 @@ namespace bLua
                     fn = bLuaInstance.CallUserDataFunction;
                 }
 
-                _instance.s_methods.Add(new MethodCallInfo()
+                _instance.registeredMethods.Add(new MethodCallInfo()
                 {
                     methodInfo = methodInfo,
                     returnType = returnType,
                     argTypes = argTypes,
                     defaultArgs = defaultArgs,
-                    closure = bLuaValue.CreateClosure(_instance, fn, bLuaValue.CreateNumber(_instance, _instance.s_methods.Count)),
+                    closure = bLuaValue.CreateClosure(_instance, fn, bLuaValue.CreateNumber(_instance, _instance.registeredMethods.Count)),
                 });
             }
 
@@ -477,10 +477,10 @@ namespace bLua
                 entry.properties[propertyInfo.Name] = new UserDataRegistryEntry.PropertyEntry()
                 {
                     propertyType = UserDataRegistryEntry.PropertyEntry.Type.Property,
-                    index = _instance.s_properties.Count,
+                    index = _instance.registeredProperties.Count,
                 };
 
-                _instance.s_properties.Add(new PropertyCallInfo()
+                _instance.registeredProperties.Add(new PropertyCallInfo()
                 {
                     propertyInfo = propertyInfo,
                     propertyType = returnType,
@@ -506,17 +506,17 @@ namespace bLua
                 entry.properties[fieldInfo.Name] = new UserDataRegistryEntry.PropertyEntry()
                 {
                     propertyType = UserDataRegistryEntry.PropertyEntry.Type.Field,
-                    index = _instance.s_fields.Count,
+                    index = _instance.registeredFields.Count,
                 };
 
-                _instance.s_fields.Add(new FieldCallInfo()
+                _instance.registeredFields.Add(new FieldCallInfo()
                 {
                     fieldInfo = fieldInfo,
                     fieldType = returnType,
                 });
             }
 
-            _instance.s_entries.Add(entry);
+            _instance.registeredEntries.Add(entry);
         }
 
         public static object PopStackIntoParamType(bLuaInstance _instance, MethodCallInfo.ParamType _paramType)
