@@ -5,14 +5,6 @@ using UnityEngine;
 
 namespace bLua.Internal
 {
-    public class LuaException : Exception
-    {
-        public LuaException(string message) : base(message)
-        {
-
-        }
-    }
-
     public static class bLuaError
     {
         public const string error_indexingUserdata = "error indexing userdata: ";

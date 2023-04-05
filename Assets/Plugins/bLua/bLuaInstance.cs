@@ -676,7 +676,7 @@ namespace bLua
                 {
                     string msg = Lua.GetString(state, -1);
                     Lua.LuaPop(state, 1);
-                    throw new LuaException(msg);
+                    throw new bLuaException(msg);
                 }
 
                 if (_environment != null)
@@ -698,7 +698,7 @@ namespace bLua
                 {
                     string msg = Lua.GetString(state, -1);
                     Lua.LuaPop(state, 1);
-                    throw new LuaException(msg);
+                    throw new bLuaException(msg);
                 }
             }
         }
@@ -735,7 +735,7 @@ namespace bLua
                     string error = Lua.GetString(state, -1);
                     Lua.LuaPop(state, 1);
                     Error($"{bLuaError.error_inFunctionCall}{error}");
-                    throw new LuaException(error);
+                    throw new bLuaException(error);
                 }
 
                 return Lua.PopStackIntoValue(this);
