@@ -601,6 +601,14 @@ namespace bLua
             return null;
         }
 
+        public void CallCoroutine(params object[] _args)
+        {
+            if (instance != null)
+            {
+                instance.CallCoroutine(this, _args);
+            }
+        }
+
         public int Length
         {
             get
