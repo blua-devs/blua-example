@@ -15,6 +15,8 @@ namespace bLua.JSON
 			Number,
 			BeginTable,
 			EndTable,
+			BeginArray,
+			EndArray,
 			EndOfFile,
 			KeySeparator,
 			ValueSeparator,
@@ -45,6 +47,8 @@ namespace bLua.JSON
 		const string boolFalse = "false";
 		const char beginTable = '{';
 		const char endTable = '}';
+		const char beginArray = '[';
+		const char endArray = ']';
 		const char valueSeparator = ',';
 		const char keySeparator = ':';
 
@@ -63,21 +67,16 @@ namespace bLua.JSON
 
         public static bLuaValue JSONToBLuaTable(bLuaInstance _instance, string _json)
         {
-			Debug.LogError("1");
 			if (_instance == null || string.IsNullOrWhiteSpace(_json) || _json.Length == 0 || !_json.StartsWith(beginTable) || !_json.EndsWith(endTable))
 			{
-				Debug.LogError("2");
 				return bLuaValue.CreateNil();
 			}
-			Debug.LogError("3");
 
 			_json = _json.Substring(1, _json.Length - 1); // Cut off the { at the beginning
 
-			Debug.LogError("4.. " + _json);
 			StringReader sr = new StringReader(_json);
 			bLuaValue table = JSONToBLuaTable(_instance, sr);
 
-			Debug.LogError("5.. keys: " + table.Keys.Count);
 			return table;
         }
 
@@ -120,98 +119,135 @@ namespace bLua.JSON
 
 		static void BLuaTableToJSON(StringBuilder _sb, bLuaValue _table)
 		{
-			if (!_table.IsTable())
-            {
-				_sb.Append(beginTable);
-				_sb.Append(nullString);
-				_sb.Append(endTable);
-				return;
-            }
-
-			_sb.Append(beginTable);
-			bLuaValue.Pair[] pairs = _table.Pairs().ToArray();
-			for (int i = 0; i < pairs.Length; i++)
-            {
-				if (pairs[i].Key.Type == DataType.String)
+			if (_table.Length > 0)
+			{
+				_sb.Append(beginArray);
+				bLuaValue[] arrayEntries = _table.List().ToArray();
+				for (int i = 0; i < _table.Length; i++)
 				{
 					if (i > 0)
 					{
 						_sb.Append(valueSeparator);
 					}
 
-					BLuaValueToJSON(_sb, pairs[i].Key);
-					_sb.Append(keySeparator);
-				}
-				else
-                {
-					continue;
+					if (IsCompatible(arrayEntries[i]))
+					{
+						BLuaValueToJSON(_sb, arrayEntries[i]);
+					}
+					else
+					{
+						_sb.Append(nullString);
+					}
                 }
-
-				if (IsCompatible(pairs[i].Value))
-                {
-					BLuaValueToJSON(_sb, pairs[i].Value);
-                }
-				else
-                {
-					_sb.Append(nullString);
-                }
+				_sb.Append(endArray);
 			}
-			_sb.Append(endTable);
+			else if (_table.Pairs().Count > 0)
+			{
+				_sb.Append(beginTable);
+				bLuaValue.Pair[] pairs = _table.Pairs().ToArray();
+				for (int i = 0; i < pairs.Length; i++)
+				{
+					if (pairs[i].Key.Type == DataType.String)
+					{
+						if (i > 0)
+						{
+							_sb.Append(valueSeparator);
+						}
+
+						BLuaValueToJSON(_sb, pairs[i].Key);
+						_sb.Append(keySeparator);
+					}
+					else
+					{
+						continue;
+					}
+
+					if (IsCompatible(pairs[i].Value))
+					{
+						BLuaValueToJSON(_sb, pairs[i].Value);
+					}
+					else
+					{
+						_sb.Append(nullString);
+					}
+				}
+				_sb.Append(endTable);
+			}
+			else
+			{
+				_sb.Append(beginTable);
+				_sb.Append(nullString);
+				_sb.Append(endTable);
+			}
 		}
 		#endregion // bLuaValue to JSON
 
 		#region JSON to bLuaValue
         /// <summary> This is called when the StringReader reads a BeginTable token, and will fill a new table with all of the containing values. </summary>
-        static bLuaValue JSONToBLuaTable(bLuaInstance _instance, StringReader _sr)
+        static bLuaValue JSONToBLuaTable(bLuaInstance _instance, StringReader _sr, bool _isArray = false)
 		{
 			bLuaValue table = bLuaValue.CreateTable(_instance);
 
+			int arrayIndex = 1;
 			string key = string.Empty;
 			Token token = new Token(TokenType.None);
-			int i = 0;
 			while (token.type != TokenType.EndOfFile)
             {
-				i++;
-				if (i > 100)
-                {
-					Debug.LogError("hit i = 100");
-					return table;
-                }
 				token = GetNextToken(_sr);
-
-				Debug.LogError("next token in table: " + token.type.ToString() + ", " + token.value);
 
 				switch (token.type)
 				{
 					case TokenType.EndOfFile:
 						return table;
 					case TokenType.ValueSeparator:
-						key = string.Empty;
-						break;
-					case TokenType.BeginTable:
-						if (!string.IsNullOrEmpty(key))
+						if (_isArray)
                         {
-							table.Set(key, JSONToBLuaTable(_instance, _sr));
-                        }
+							arrayIndex++;
+						}
 						else
                         {
-							Debug.LogError("e2: " + token.type.ToString() + ", " + token.value);
+							key = string.Empty;
+                        }
+						break;
+					case TokenType.BeginTable:
+						if (_isArray)
+						{
+							table.Set(arrayIndex, JSONToBLuaTable(_instance, _sr));
+						}
+						else if (!string.IsNullOrEmpty(key))
+						{
+							table.Set(key, JSONToBLuaTable(_instance, _sr));
 						}
 						break;
+					case TokenType.BeginArray:
+						if (_isArray)
+                        {
+							table.Set(arrayIndex, JSONToBLuaTable(_instance, _sr, true));
+                        }
+						else if (!string.IsNullOrEmpty(key))
+                        {
+							table.Set(key, JSONToBLuaTable(_instance, _sr, true));
+                        }
+						break;
 					case TokenType.EndTable:
+					case TokenType.EndArray:
 						return table;
 					case TokenType.Boolean:
-						if (!string.IsNullOrEmpty(key))
+						if (_isArray)
+                        {
+							table.Set(arrayIndex, TokenToBool(token));
+                        }
+						else if (!string.IsNullOrEmpty(key))
                         {
 							table.Set(key, TokenToBool(token));
                         }
-						else
-                        {
-							Debug.LogError("e3: " + token.type.ToString() + ", " + token.value);
-						}
 						break;
 					case TokenType.String:
-						if (!string.IsNullOrEmpty(key))
+						if (_isArray)
+                        {
+							table.Set(arrayIndex, TokenToBool(token));
+                        }
+						else if (!string.IsNullOrEmpty(key))
 						{
 							table.Set(key, TokenToString(token));
 						}
@@ -221,24 +257,24 @@ namespace bLua.JSON
 						}
 						break;
 					case TokenType.Number:
-						if (!string.IsNullOrEmpty(key))
+						if (_isArray)
+                        {
+							table.Set(arrayIndex, TokenToNumber(token));
+                        }
+						else if (!string.IsNullOrEmpty(key))
 						{
 							table.Set(key, TokenToNumber(token));
 						}
-						else
-						{
-							Debug.LogError("e5: " + token.type.ToString() + ", " + token.value);
-						}
 						break;
 					case TokenType.Null:
-						if (!string.IsNullOrEmpty(key))
+						if (_isArray)
+						{
+							table.Set(arrayIndex, bLuaValue.CreateNil());
+						}
+						else if (!string.IsNullOrEmpty(key))
                         {
 							table.Set(key, bLuaValue.CreateNil());
                         }
-						else
-                        {
-							Debug.LogError("e6: " + token.type.ToString() + ", " + token.value);
-						}
 						break;
 				}
 			}
@@ -325,6 +361,14 @@ namespace bLua.JSON
 			{
 				return new Token(TokenType.EndTable, endTable.ToString());
 			}
+			else if (c == beginArray)
+            {
+				return new Token(TokenType.BeginArray, beginArray.ToString());
+            }
+			else if (c == endArray)
+            {
+				return new Token(TokenType.EndArray, endArray.ToString());
+            }
 			else if (c == keySeparator)
             {
 				return new Token(TokenType.KeySeparator);
