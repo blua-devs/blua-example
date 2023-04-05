@@ -469,9 +469,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   runCodeOnStart: 1
+  runMonoBehaviourEvents: 1
   chunkName: default_component1
-  code: "function Test()\n\tgameObject.position = gameObject.position + Vector3.New(0,5,0)\n\tgameObject.position
-    = gameObject.position:Normalize()\n\tprint(\"my pos is \" .. gameObject.position)\nend\nTest()"
+  code: print("Write some lua code on the Cube's bLuaComponent!")
 --- !u!1001 &4686878184624808642
 PrefabInstance:
   m_ObjectHideFlags: 0
