@@ -42,7 +42,7 @@ public class bLuaBenchmark : Benchmark
     {
         bLuaInstance instance = new bLuaInstance(new bLuaSettings()
         {
-            sandbox = Sandbox.Safe,
+            features = bLuaSettings.SANDBOX_SAFE,
             autoRegisterTypes = bLuaSettings.AutoRegisterTypes.None
         });
         instances.Add(instance);

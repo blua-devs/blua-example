@@ -309,7 +309,7 @@ namespace bLua.Internal
                 {
                     case UserDataRegistryEntry.PropertyEntry.Type.Method:
                         {
-                            if (mainThreadInstance.FeatureEnabled(Feature.ImplicitSyntaxSugar))
+                            if (mainThreadInstance.FeatureEnabled(Features.ImplicitSyntaxSugar))
                             {
                                 int liveObjectIndex;
                                 if (!GetLiveObjectIndex(_state, mainThreadInstance, out liveObjectIndex))

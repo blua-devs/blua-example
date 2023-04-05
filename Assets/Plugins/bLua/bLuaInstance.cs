@@ -31,7 +31,7 @@ namespace bLua
 
     /// <summary> Features are specific libraries, Lua boilerplate, or C# systems that improve upon vanilla Lua usage or functionality. </summary>
     [Flags]
-    public enum Feature
+    public enum Features
     {
         /// <summary> No given features. </summary>
         None = 0,
@@ -71,53 +71,52 @@ namespace bLua
         ImplicitSyntaxSugar = 4096
     }
 
-    /// <summary> Sandboxes are groupings of features that let you select premade feature lists for your bLua environment. </summary>
-    public enum Sandbox
-    {
-        /// <summary> No additional Lua or bLua features. </summary>
-        None = Feature.None,
-        /// <remarks> WARNING! Some of these features include developer warnings, please review the remarks on individual features. </remarks>
-        /// <summary> Includes all of the features Lua and bLua have to offer. </summary>
-        AllFeatures = Feature.BasicLibrary
-            | Feature.Coroutines
-            | Feature.Packages
-            | Feature.StringManipulation
-            | Feature.UTF8Support
-            | Feature.Tables
-            | Feature.MathLibrary
-            | Feature.IO
-            | Feature.OS
-            | Feature.Debug
-            | Feature.ThreadMacros
-            | Feature.HelperMacros
-            | Feature.ImplicitSyntaxSugar,
-        /// <remarks> WARNING! Some of these features include developer warnings, please review the remarks on individual features. </remarks>
-        /// <summary> Includes most Lua and bLua features, specifically ones that might be used commonly in modding. </summary>
-        BasicModding = Feature.BasicLibrary
-            | Feature.Coroutines
-            | Feature.StringManipulation
-            | Feature.UTF8Support
-            | Feature.Tables
-            | Feature.MathLibrary
-            | Feature.IO
-            | Feature.ThreadMacros
-            | Feature.HelperMacros,
-        /// <summary> Includes basic Lua and bLua features, avoiding ones that could be potentially used maliciously. </summary>
-        Safe = Feature.BasicLibrary
-            | Feature.Coroutines
-            | Feature.StringManipulation
-            | Feature.UTF8Support
-            | Feature.Tables
-            | Feature.MathLibrary
-            | Feature.ThreadMacros
-            | Feature.HelperMacros
-    }
-
     /// <summary> Contains settings for the bLua runtime. </summary>
     public class bLuaSettings
     {
+        /// <summary> No additional Lua or bLua features. </summary>
+        public static Features SANDBOX_NONE = Features.None;
+
+        /// <remarks> WARNING! Some of these features include developer warnings, please review the remarks on individual features. </remarks>
+        /// <summary> Includes all of the features Lua and bLua have to offer. </summary>
+        public static Features SANDBOX_ALL = Features.BasicLibrary
+            | Features.Coroutines
+            | Features.Packages
+            | Features.StringManipulation
+            | Features.UTF8Support
+            | Features.Tables
+            | Features.MathLibrary
+            | Features.IO
+            | Features.OS
+            | Features.Debug
+            | Features.ThreadMacros
+            | Features.HelperMacros
+            | Features.ImplicitSyntaxSugar;
+
+        /// <remarks> WARNING! Some of these features include developer warnings, please review the remarks on individual features. </remarks>
+        /// <summary> Includes most Lua and bLua features, specifically ones that might be used commonly in modding. </summary>
+        public static Features SANDBOX_BASICMODDING = Features.BasicLibrary
+            | Features.Coroutines
+            | Features.StringManipulation
+            | Features.UTF8Support
+            | Features.Tables
+            | Features.MathLibrary
+            | Features.IO
+            | Features.ThreadMacros
+            | Features.HelperMacros;
+
+        /// <summary> Includes basic Lua and bLua features, avoiding ones that could be potentially used maliciously. </summary>
+        public static Features SANDBOX_SAFE = Features.BasicLibrary
+            | Features.Coroutines
+            | Features.StringManipulation
+            | Features.UTF8Support
+            | Features.Tables
+            | Features.MathLibrary
+            | Features.ThreadMacros
+            | Features.HelperMacros;
+
         /// <summary> The selected sandbox (set of features) for bLua. </summary>
-        public Sandbox sandbox = Sandbox.Safe;
+        public Features features = SANDBOX_SAFE;
 
         public enum TickBehavior
         {
@@ -248,12 +247,12 @@ namespace bLua
             }
 
             #region Feature Handling
-            if (FeatureEnabled(Feature.BasicLibrary))
+            if (FeatureEnabled(Features.BasicLibrary))
             {
                 LuaLibAPI.luaopen_base(state);
             }
 
-            if (FeatureEnabled(Feature.Coroutines))
+            if (FeatureEnabled(Features.Coroutines))
             {
                 SetGlobal<Func<float>>("blua_internal_time", () => {
 #if UNITY_EDITOR
@@ -326,55 +325,55 @@ namespace bLua
                     end");
             }
 
-            if (FeatureEnabled(Feature.Packages))
+            if (FeatureEnabled(Features.Packages))
             {
                 LuaLibAPI.luaopen_package(state);
                 LuaLibAPI.lua_setglobal(state, "package");
             }
 
-            if (FeatureEnabled(Feature.StringManipulation))
+            if (FeatureEnabled(Features.StringManipulation))
             {
                 LuaLibAPI.luaopen_string(state);
                 LuaLibAPI.lua_setglobal(state, "string");
             }
 
-            if (FeatureEnabled(Feature.UTF8Support))
+            if (FeatureEnabled(Features.UTF8Support))
             {
                 LuaLibAPI.luaopen_utf8(state);
                 LuaLibAPI.lua_setglobal(state, "utf8");
             }
 
-            if (FeatureEnabled(Feature.Tables))
+            if (FeatureEnabled(Features.Tables))
             {
                 LuaLibAPI.luaopen_table(state);
                 LuaLibAPI.lua_setglobal(state, "table");
             }
 
-            if (FeatureEnabled(Feature.MathLibrary))
+            if (FeatureEnabled(Features.MathLibrary))
             {
                 LuaLibAPI.luaopen_math(state);
                 LuaLibAPI.lua_setglobal(state, "math");
             }
 
-            if (FeatureEnabled(Feature.IO))
+            if (FeatureEnabled(Features.IO))
             {
                 LuaLibAPI.luaopen_io(state);
                 LuaLibAPI.lua_setglobal(state, "io");
             }
 
-            if (FeatureEnabled(Feature.OS))
+            if (FeatureEnabled(Features.OS))
             {
                 LuaLibAPI.luaopen_os(state);
                 LuaLibAPI.lua_setglobal(state, "os");
             }
 
-            if (FeatureEnabled(Feature.Debug))
+            if (FeatureEnabled(Features.Debug))
             {
                 LuaLibAPI.luaopen_debug(state);
                 LuaLibAPI.lua_setglobal(state, "debug");
             }
 
-            if (FeatureEnabled(Feature.ThreadMacros))
+            if (FeatureEnabled(Features.ThreadMacros))
             {
                 DoBuffer("thread_macros",
                     @"function wait(t)
@@ -403,7 +402,7 @@ namespace bLua
                     end");
             }
 
-            if (FeatureEnabled(Feature.HelperMacros))
+            if (FeatureEnabled(Features.HelperMacros))
             {
                 SetGlobal<Action<bLuaValue>>("print", (s) => OnPrint.Invoke(s.CastToString()));
             }
@@ -769,9 +768,9 @@ namespace bLua
         }
 
         /// <summary> Returns true if this instance's sandbox has the passed feature enabled. </summary>
-        public bool FeatureEnabled(Feature _feature)
+        public bool FeatureEnabled(Features _feature)
         {
-            return ((Feature)(int)settings.sandbox).HasFlag(_feature);
+            return ((Features)(int)settings.features).HasFlag(_feature);
         }
 
         #region C Functions called from Lua

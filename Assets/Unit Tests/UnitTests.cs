@@ -156,7 +156,7 @@ public class UnitTests : MonoBehaviour
     {
         bLuaInstance instance = new bLuaInstance(new bLuaSettings()
         {
-            sandbox = Sandbox.AllFeatures
+            features = bLuaSettings.SANDBOX_SAFE
         });
 
         Debug.Log("Starting Unit Tests");
@@ -309,7 +309,7 @@ public class UnitTests : MonoBehaviour
     {
         bLuaInstance instance = new bLuaInstance(new bLuaSettings()
         {
-            sandbox = Sandbox.AllFeatures
+            features = bLuaSettings.SANDBOX_SAFE
         });
 
         Debug.Log("Starting Test Coroutine");
@@ -332,7 +332,7 @@ public class UnitTests : MonoBehaviour
     {
         bLuaInstance instance = new bLuaInstance(new bLuaSettings()
         {
-            sandbox = Sandbox.AllFeatures
+            features = bLuaSettings.SANDBOX_SAFE
         });
 
         Debug.Log("Starting Thread Macros");
