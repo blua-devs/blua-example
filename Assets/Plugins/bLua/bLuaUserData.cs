@@ -10,7 +10,7 @@ using bLua.Internal;
 
 namespace bLua
 {
-    [AttributeUsage(AttributeTargets.Method | AttributeTargets.Property | AttributeTargets.Field)]
+    [AttributeUsage(AttributeTargets.Method | AttributeTargets.Property | AttributeTargets.Field | AttributeTargets.Constructor)]
     public class bLuaHiddenAttribute : Attribute
     {
 
