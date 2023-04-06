@@ -197,7 +197,6 @@ namespace bLua.NativeLua
         public static void PushNewTable(bLuaInstance _instance, int _reserveArray = 0, int _reserveTable = 0)
         {
             LuaLibAPI.lua_checkstack(_instance.state, 1);
-
             LuaLibAPI.lua_createtable(_instance.state, _reserveArray, _reserveTable);
         }
 
