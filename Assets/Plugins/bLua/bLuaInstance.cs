@@ -580,6 +580,14 @@ namespace bLua
 
         public void CallCoroutine(bLuaValue _fn, params object[] _args)
         {
+            if (!FeatureEnabled(Features.Coroutines))
+            {
+                Debug.LogError("Can't use CallCoroutine when the Coroutines feature is disabled. Using Call instead.");
+
+                Call(_fn, _args);
+                return;
+            }
+
             int nargs = _args != null ? _args.Length : 0;
 
             object[] a = new object[nargs + 1];
