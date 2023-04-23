@@ -784,6 +784,97 @@ namespace bLua
         }
 
         #region C Functions called from Lua
+        public static int CallGlobalMethod(IntPtr _state)
+        {
+            IntPtr mainThreadState = Lua.GetMainThread(_state);
+            bLuaInstance mainThreadInstance = GetInstanceByState(mainThreadState);
+
+            var stateBack = mainThreadInstance.state;
+            try
+            {
+                mainThreadInstance.state = _state;
+
+                int stackSize = LuaLibAPI.lua_gettop(_state);
+
+                int n = LuaLibAPI.lua_tointegerx(_state, Lua.UpValueIndex(1), IntPtr.Zero);
+
+                if (n < 0 || n >= mainThreadInstance.registeredMethods.Count)
+                {
+                    mainThreadInstance.Error($"{bLuaError.error_invalidMethodIndex}{n}");
+                    return 0;
+                }
+
+                MethodCallInfo methodCallInfo = mainThreadInstance.registeredMethods[n];
+                GlobalMethodCallInfo info = methodCallInfo as GlobalMethodCallInfo;
+
+                object[] parms = null;
+                int parmsIndex = 0;
+
+                int parametersLength = info.argTypes.Length;
+                if (parametersLength > 0 && info.argTypes[parametersLength - 1] == MethodCallInfo.ParamType.Params)
+                {
+                    parametersLength--;
+                    if (stackSize > parametersLength)
+                    {
+                        parms = new object[(stackSize) - parametersLength];
+                        parmsIndex = parms.Length - 1;
+                    }
+                }
+
+                object[] args = new object[info.argTypes.Length];
+                int argIndex = args.Length - 1;
+
+                // Set the last args index to be the parameters array
+                if (parms != null)
+                {
+                    args[argIndex--] = parms;
+                }
+
+                while (argIndex > stackSize - 1)
+                {
+                    // Backfill any arguments with defaults.
+                    args[argIndex] = info.defaultArgs[argIndex];
+                    --argIndex;
+                }
+                while (stackSize - 1 > argIndex)
+                {
+                    // Backfill the parameters with values from the Lua stack
+                    if (parms != null)
+                    {
+                        parms[parmsIndex--] = Lua.PopStackIntoObject(mainThreadInstance);
+                    }
+                    else
+                    {
+                        Lua.PopStack(mainThreadInstance);
+                    }
+                    --stackSize;
+                }
+
+                while (stackSize > 0)
+                {
+                    args[argIndex] = bLuaUserData.PopStackIntoParamType(mainThreadInstance, info.argTypes[argIndex]);
+
+                    --stackSize;
+                    --argIndex;
+                }
+
+                object result = info.methodInfo.Invoke(info.objectInstance, args);
+
+                bLuaUserData.PushReturnTypeOntoStack(mainThreadInstance, info.returnType, result);
+                return 1;
+
+            }
+            catch (Exception e)
+            {
+                mainThreadInstance.ExceptionError(e, bLuaError.error_callingDelegate);
+                return 0;
+            }
+            finally
+            {
+                mainThreadInstance.state = stateBack;
+            }
+        }
+
         public static int CallDelegate(IntPtr _state)
         {
             IntPtr mainThreadState = Lua.GetMainThread(_state);

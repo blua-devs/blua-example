@@ -148,6 +148,15 @@ namespace bLua.NativeLua
             LuaLibAPI.lua_pushcclosure(_instance.state, Marshal.GetFunctionPointerForDelegate(_fn), _upvalues.Length);
         }
 
+        public static void PushClosure(bLuaInstance _instance, GlobalMethodCallInfo _globalMethodCallInfo)
+        {
+            LuaCFunction fn = bLuaInstance.CallGlobalMethod;
+            bLuaValue[] upvalues = new bLuaValue[1] { bLuaValue.CreateNumber(_instance, _instance.registeredMethods.Count) };
+            _instance.registeredMethods.Add(_globalMethodCallInfo);
+
+            PushClosure(_instance, fn, upvalues);
+        }
+
         public static void PushClosure<T>(bLuaInstance _instance, T _func) where T : MulticastDelegate
         {
             MethodInfo methodInfo = _func.Method;
@@ -250,6 +259,10 @@ namespace bLua.NativeLua
             else if (_object is LuaCFunction)
             {
                 LuaPushCFunction(_instance, _object as LuaCFunction);
+            }
+            else if (_object is GlobalMethodCallInfo)
+            {
+                PushClosure(_instance, _object as GlobalMethodCallInfo);
             }
             else if (_object is MulticastDelegate) // Func<> and Action<>
             {

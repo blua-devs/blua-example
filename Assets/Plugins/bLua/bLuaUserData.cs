@@ -70,6 +70,11 @@ namespace bLua
         public bLuaValue closure;
     }
 
+    public class GlobalMethodCallInfo : MethodCallInfo
+    {
+        public object objectInstance;
+    }
+
     public class DelegateCallInfo : MethodCallInfo
     {
         public MulticastDelegate multicastDelegate;
@@ -517,6 +522,91 @@ namespace bLua
             }
 
             _instance.registeredEntries.Add(entry);
+        }
+
+        /// <summary> Registers all methods on a class as global functions in Lua. If _environment is null, the methods will be registered
+        /// as global in the global environment. </summary>
+        public static void RegisterAllMethodsAsGlobal(bLuaInstance _instance, object _object, bLuaValue _environment = null)
+        {
+            if (_object == null)
+            {
+                Debug.LogError("Can't register all methods as global, object is null");
+                return;
+            }
+
+            if (_environment == null)
+            {
+                Debug.LogError("Can't register all methods as global, environment is null");
+                return;
+            }
+
+            MethodInfo[] methods = _object.GetType().GetMethods(BindingFlags.Public | BindingFlags.DeclaredOnly | BindingFlags.Static);
+            for (int i = 0; i < methods.Length; i++)
+            {
+                GlobalMethodCallInfo info = CreateGlobalMethodCallInfo(_instance, methods[i], _object);
+                if (info == null)
+                {
+                    continue;
+                }
+
+                _environment.Set(methods[i].Name, info);
+            }
+        }
+
+        static GlobalMethodCallInfo CreateGlobalMethodCallInfo(bLuaInstance _instance, MethodInfo _methodInfo, object _object)
+        {
+            Attribute hiddenAttr = _methodInfo.GetCustomAttribute(typeof(bLuaHiddenAttribute));
+            if (hiddenAttr != null)
+            {
+                return null;
+            }
+
+            ParameterInfo[] methodParams = _methodInfo.GetParameters();
+
+            bool isExtensionMethod = _methodInfo.IsDefined(typeof(ExtensionAttribute), true);
+            if (isExtensionMethod)
+            {
+                Debug.LogError($"Tried to register extension method ({_methodInfo.Name}) as a global method. This is not allowed.");
+                return null;
+            }
+
+            MethodCallInfo.ParamType[] argTypes = new MethodCallInfo.ParamType[methodParams.Length];
+            object[] defaultArgs = new object[methodParams.Length];
+            for (int i = 0; i < methodParams.Length; ++i)
+            {
+                argTypes[i] = SystemTypeToParamType(_instance, methodParams[i].ParameterType);
+
+                if (i == methodParams.Length - 1 && methodParams[i].GetCustomAttribute(typeof(ParamArrayAttribute)) != null)
+                {
+                    argTypes[i] = MethodCallInfo.ParamType.Params;
+                }
+
+                if (methodParams[i].HasDefaultValue)
+                {
+                    defaultArgs[i] = methodParams[i].DefaultValue;
+                }
+                else if (argTypes[i] == MethodCallInfo.ParamType.LuaValue)
+                {
+                    defaultArgs[i] = bLuaValue.Nil;
+                }
+                else
+                {
+                    defaultArgs[i] = null;
+                }
+            }
+
+            MethodCallInfo.ParamType returnType = SystemTypeToParamType(_instance, _methodInfo.ReturnType);
+
+            GlobalMethodCallInfo methodCallInfo = new GlobalMethodCallInfo()
+            {
+                methodInfo = _methodInfo,
+                returnType = returnType,
+                argTypes = argTypes,
+                defaultArgs = defaultArgs,
+                objectInstance = _object
+            };
+
+            return methodCallInfo;
         }
 
         public static object PopStackIntoParamType(bLuaInstance _instance, MethodCallInfo.ParamType _paramType)
