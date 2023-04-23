@@ -246,6 +246,9 @@ namespace bLua
                 bLuaUserData.RegisterAllBLuaUserData(this);
             }
 
+            // Make sure internal bLua Lua (such as the coroutine feature) has a way to call errors properly
+            SetGlobal<Action<string>>("blua_internal_error", (e) => Error(e));
+
             #region Feature Handling
             if (FeatureEnabled(Features.BasicLibrary))
             {
@@ -281,9 +284,8 @@ namespace bLua
                     @"return function(fn, a, b, c, d, e, f, g, h)
                         local co = coroutine.create(fn)
                         local res, error = coroutine.resume(co, a, b, c, d, e, f, g, h)
-                        --print('COROUTINE:: call co: %s -> %s -> %s', type(co), type(fn), coroutine.status(co))
                         if not res then
-                            print(string.format('error in co-routine: %s', error))
+                            blua_internal_error(error)
                         end
                         if coroutine.status(co) ~= 'dead' then
                             builtin_coroutines[#builtin_coroutines+1] = co
@@ -295,7 +297,7 @@ namespace bLua
                         for _,co in ipairs(builtin_coroutines) do
                             local res, error = coroutine.resume(co)
                             if not res then
-                                print(string.format('error in co-routine: %s', error))
+                                blua_internal_error(error)
                             end
                             if coroutine.status(co) == 'dead' then
                                 allRunning = false
@@ -318,7 +320,7 @@ namespace bLua
                         for _,co in ipairs(builtin_coroutines) do
                             local res, error = coroutine.close(co)
                             if not res then
-                                print(string.format('error closing co-routine: %s', error))
+                                blua_internal_error(error)
                             end
                         end
                         builtin_coroutines = {}
