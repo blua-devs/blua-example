@@ -466,15 +466,15 @@ namespace bLua.Internal
 
                 Type[] operationMethodParamRequirements = new Type[2] { operandL.ToObject().GetType(), operandR.ToObject().GetType() };
 
-                string operationMethodName = Lua.GetString(revertState, Lua.UpValueIndex(2));
-                string operationError = Lua.GetString(revertState, Lua.UpValueIndex(3));
+                string operationMethodName = Lua.GetString(_state, Lua.UpValueIndex(2));
+                string operationError = Lua.GetString(_state, Lua.UpValueIndex(3));
 
                 MethodInfo operationMethod;
                 if (!GetMethodWithParams(operandL.ToObject(), operationMethodName, out operationMethod, operationMethodParamRequirements))
                 {
                     if (!GetMethodWithParams(operandR.ToObject(), operationMethodName, out operationMethod, operationMethodParamRequirements))
                     {
-                        mainThreadInstance.Error($"{operationError}{operandL.ToObject().GetType().Name}, {operandR.ToObject().GetType().Name}");
+                        mainThreadInstance.Error($"{operationError}{operandL.ToObject().GetType().Name}, {operandR.ToObject().GetType().Name} ({operationMethodName})");
                         Lua.PushNil(mainThreadInstance);
                         return 1;
                     }
