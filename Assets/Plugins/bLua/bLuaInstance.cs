@@ -213,7 +213,10 @@ namespace bLua
 
         public void Dispose()
         {
-            DeInit();
+            if (initialized)
+            {
+                DeInit();
+            }
         }
 
         #region Initialization
