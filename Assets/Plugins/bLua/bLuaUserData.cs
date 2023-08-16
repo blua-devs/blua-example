@@ -59,7 +59,9 @@ namespace bLua
             Double,
             Bool,
             Float,
-            Params
+            Params,
+            Array,
+            List
         }
 
         public ParamType returnType;
@@ -122,6 +124,36 @@ namespace bLua
                     return;
                 case MethodCallInfo.ParamType.Str:
                     Lua.PushOntoStack(_instance, (string)_result);
+                    return;
+                case MethodCallInfo.ParamType.Array:
+                    if (!_result.GetType().IsArray)
+                    {
+                        goto default;
+                    }
+
+                    bLuaValue arrayTable = bLuaValue.CreateTable(_instance);
+                    foreach (object o in (_result as object[]))
+                    {
+                        arrayTable.Append(o);
+                    }
+
+                    Lua.PushOntoStack(_instance, arrayTable);
+
+                    return;
+                case MethodCallInfo.ParamType.List:
+                    if (!_result.GetType().IsGenericType || _result.GetType().GetGenericTypeDefinition() != typeof(List<>))
+                    {
+                        goto default;
+                    }
+
+                    bLuaValue listTable = bLuaValue.CreateTable(_instance);
+                    foreach (object o in _result as IEnumerable)
+                    {
+                        listTable.Append(o);
+                    }
+
+                    Lua.PushOntoStack(_instance, listTable);
+
                     return;
                 case MethodCallInfo.ParamType.UserDataClass:
                     PushNewUserData(_instance, _result);
@@ -623,11 +655,15 @@ namespace bLua
                     return Lua.PopInteger(_instance);
                 case MethodCallInfo.ParamType.Str:
                     return Lua.PopString(_instance);
+                case MethodCallInfo.ParamType.Array:
+                    return Lua.PopList(_instance).ToArray();
+                case MethodCallInfo.ParamType.List:
+                    return Lua.PopList(_instance);
                 case MethodCallInfo.ParamType.LuaValue:
                     return Lua.PopStackIntoValue(_instance);
                 case MethodCallInfo.ParamType.UserDataClass:
-                    object o = Lua.PopStackIntoValue(_instance).Object;
-                    return o != null ? Convert.ChangeType(o, o.GetType()) : o;
+                    object userDataClassObject = Lua.PopStackIntoValue(_instance).Object;
+                    return userDataClassObject != null ? Convert.ChangeType(userDataClassObject, userDataClassObject.GetType()) : userDataClassObject;
                 default:
                     Lua.PopStack(_instance);
                     return null;
@@ -659,6 +695,14 @@ namespace bLua
             else if (_type == typeof(bool))
             {
                 return MethodCallInfo.ParamType.Bool;
+            }
+            else if (_type.IsArray)
+            {
+                return MethodCallInfo.ParamType.Array;
+            }
+            else if (_type.IsGenericType && (_type.GetGenericTypeDefinition() == typeof(List<>)))
+            {
+                return MethodCallInfo.ParamType.List;
             }
             else if (_type == typeof(bLuaValue))
             {
