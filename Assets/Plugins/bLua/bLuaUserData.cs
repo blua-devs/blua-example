@@ -61,7 +61,8 @@ namespace bLua
             Float,
             Params,
             Array,
-            List
+            List,
+            Dictionary
         }
 
         public ParamType returnType;
@@ -153,6 +154,21 @@ namespace bLua
                     }
 
                     Lua.PushOntoStack(_instance, listTable);
+
+                    return;
+                case MethodCallInfo.ParamType.Dictionary:
+                    if (!_result.GetType().IsGenericType || _result.GetType().GetGenericTypeDefinition() != typeof(Dictionary<,>))
+                    {
+                        goto default;
+                    }
+
+                    bLuaValue dictionaryTable = bLuaValue.CreateTable(_instance);
+                    foreach (object key in (_result as IDictionary).Keys)
+                    {
+                        dictionaryTable.Set(key, (_result as IDictionary)[key]);
+                    }
+
+                    Lua.PushOntoStack(_instance, dictionaryTable);
 
                     return;
                 case MethodCallInfo.ParamType.UserDataClass:
@@ -659,6 +675,8 @@ namespace bLua
                     return Lua.PopList(_instance).ToArray();
                 case MethodCallInfo.ParamType.List:
                     return Lua.PopList(_instance);
+                case MethodCallInfo.ParamType.Dictionary:
+                    return Lua.PopDict(_instance);
                 case MethodCallInfo.ParamType.LuaValue:
                     return Lua.PopStackIntoValue(_instance);
                 case MethodCallInfo.ParamType.UserDataClass:
@@ -703,6 +721,10 @@ namespace bLua
             else if (_type.IsGenericType && (_type.GetGenericTypeDefinition() == typeof(List<>)))
             {
                 return MethodCallInfo.ParamType.List;
+            }
+            else if (_type.IsGenericType && (_type.GetGenericTypeDefinition() == typeof(Dictionary<,>)))
+            {
+                return MethodCallInfo.ParamType.Dictionary;
             }
             else if (_type == typeof(bLuaValue))
             {
