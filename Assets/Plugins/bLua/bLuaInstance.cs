@@ -144,6 +144,18 @@ namespace bLua
 
         /// <summary> Controls user data behavior. Read summaries of UserDataBehavior options for more information. </summary>
         public AutoRegisterTypes autoRegisterTypes = AutoRegisterTypes.BLua;
+
+        public enum InternalErrorVerbosity
+        {
+            /// <summary> (Default) Shows the error message sent from the Lua library. Never show the engine trace for errors. </summary>
+            Normal,
+            /// <remarks> WARNING! You must have the Debug feature enabled to grant bLua access to the debug library! </remarks>
+            /// <summary> (High) Shows the error message sent from the Lua library as well as the engine trace (debug.traceback) for the exception. </summary>
+            Verbose
+        }
+
+        /// <summary> Controls how detailed the error messages from internal bLua are. Read the summary of the different options for more info. </summary>
+        public InternalErrorVerbosity internalErrorVerbosity = InternalErrorVerbosity.Normal;
     }
 
     public class bLuaInstance : IDisposable
@@ -250,7 +262,23 @@ namespace bLua
             }
 
             // Make sure internal bLua Lua (such as the coroutine feature) has a way to call errors properly
-            SetGlobal<Action<string>>("blua_internal_error", (e) => Error(e));
+            string callInternalErrorLua = @"";
+            switch (settings.internalErrorVerbosity)
+            {
+                case bLuaSettings.InternalErrorVerbosity.Normal:
+                    SetGlobal<Action<string>>("blua_internal_error", (e) => Error(e));
+                    callInternalErrorLua = @"blua_internal_error(error)";
+                    break;
+                case bLuaSettings.InternalErrorVerbosity.Verbose:
+                    SetGlobal<Action<string, string>>("blua_internal_error", (e, et) => Error(e, et));
+                    callInternalErrorLua = @"blua_internal_error(error, debug.traceback(co))";
+
+                    if (!settings.features.HasFlag(Features.Debug))
+                    {
+                        Debug.LogError("You cannot use the Verbose InternalErrorVerbosity unless you have the Debug feature enabled! Expect errors/issues.");
+                    }
+                    break;
+            }
 
             #region Feature Handling
             if (FeatureEnabled(Features.BasicLibrary))
@@ -288,7 +316,7 @@ namespace bLua
                         local co = coroutine.create(fn)
                         local res, error = coroutine.resume(co, a, b, c, d, e, f, g, h)
                         if not res then
-                            blua_internal_error(error)
+                            " + callInternalErrorLua + @"
                         end
                         if coroutine.status(co) ~= 'dead' then
                             builtin_coroutines[#builtin_coroutines+1] = co
@@ -300,7 +328,7 @@ namespace bLua
                         for _,co in ipairs(builtin_coroutines) do
                             local res, error = coroutine.resume(co)
                             if not res then
-                                blua_internal_error(error)
+                                " + callInternalErrorLua + @"
                             end
                             if coroutine.status(co) == 'dead' then
                                 allRunning = false
@@ -323,7 +351,7 @@ namespace bLua
                         for _,co in ipairs(builtin_coroutines) do
                             local res, error = coroutine.close(co)
                             if not res then
-                                blua_internal_error(error)
+                                " + callInternalErrorLua + @"
                             end
                         end
                         builtin_coroutines = {}
@@ -636,9 +664,9 @@ namespace bLua
             }
 
             string msg = Lua.TraceMessage(this, _message);
-            if (_engineTrace != null)
+            if (settings.internalErrorVerbosity == bLuaSettings.InternalErrorVerbosity.Verbose)
             {
-                msg += "\n\n---\nEngine error details:\n" + _engineTrace;
+                msg += "\n\n---\nEngine error details:\n" + (_engineTrace != null ? _engineTrace : "[no engine trace]");
             }
 
             Debug.LogError(msg);
