@@ -228,15 +228,67 @@ namespace bLua.Internal
         static bool PopStackIntoArgs(bLuaInstance _instance, MethodCallInfo _methodInfo, object _liveObject, out object[] _args)
         {
             bool isExtensionMethod = _methodInfo.methodInfo.IsDefined(typeof(ExtensionAttribute), true);
+            
+            int stackSize = LuaLibAPI.lua_gettop(_instance.state);
+            if (stackSize == 0 || LuaLibAPI.lua_type(_instance.state, 1) != (int)DataType.UserData)
+            {
+                _instance.Error($"{bLuaError.error_objectNotProvided}");
+                _args = new object[0];
+                return false;
+            }
 
-            _args = new object[_methodInfo.argTypes.Length];
+            object[] parms = null;
+            int parmsIndex = 0;
+
+            int len = _methodInfo.argTypes.Length;
+            if (len > 0 && _methodInfo.argTypes[len - 1] == MethodCallInfo.ParamType.Params)
+            {
+                len--;
+                if (stackSize - 1 > len)
+                {
+                    parms = new object[(stackSize - 1) - len];
+                    parmsIndex = parms.Length - 1;
+                }
+            }
+
+            _args = new object[isExtensionMethod ? _methodInfo.argTypes.Length + 1 : _methodInfo.argTypes.Length];
+            int argIndex = _args.Length - 1;
+
+            if (parms != null)
+            {
+                _args[argIndex--] = parms;
+            }
+
+            while (argIndex > stackSize - 2)
+            {
+                // Backfill any arguments with defaults.
+                _args[argIndex] = _methodInfo.defaultArgs[argIndex];
+                --argIndex;
+            }
+            while (stackSize - 2 > argIndex)
+            {
+                if (parms != null)
+                {
+                    parms[parmsIndex--] = Lua.PopStackIntoValue(_instance);
+                }
+                else
+                {
+                    Lua.PopStack(_instance);
+                }
+                --stackSize;
+            }
+
+            while (stackSize > 1)
+            {
+                _args[argIndex] = bLuaUserData.PopStackIntoParamType(_instance, _methodInfo.argTypes[argIndex]);
+
+                --stackSize;
+                --argIndex;
+            }
+
             if (isExtensionMethod)
             {
                 _args[0] = _liveObject;
-            }
-            for (int p = _methodInfo.argTypes.Length - (isExtensionMethod ? 2 : 1); p >=0 ; p--)
-            {
-                _args[p] = bLuaUserData.PopStackIntoParamType(_instance, _methodInfo.argTypes[p]);
             }
 
             return true;
