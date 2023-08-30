@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -68,7 +69,11 @@ namespace bLua
         /// <remarks> WARNING! This may affect performance based on how often your Lua runs userdata methods. </remarks>
         /// <summary> Makes the syntax sugar `:` optional when calling instance methods on userdata. The symbols `.` and `:` become interchangeable in all cases
         /// where Lua is calling a userdata method. </summary>
-        ImplicitSyntaxSugar = 4096
+        ImplicitSyntaxSugar = 4096,
+        /// <remarks> WARNING! If NOT enabled, you may experience leftover Lua userdata (and bLuaValue objects in C#) that NEVER get garbage collected. It is
+        /// highly recommended to keep this setting on as a lightweight backup to prevent potentially consuming all available memory. </remarks>
+        /// <summary> When enabled, bLua will run its own GC system to clean up Lua userdata that isn't normally cleaned up by Lua's GC. </summary>
+        CSharpGarbageCollection = 8192
     }
 
     /// <summary> Contains settings for the bLua runtime. </summary>
@@ -91,7 +96,8 @@ namespace bLua
             | Features.Debug
             | Features.ThreadMacros
             | Features.HelperMacros
-            | Features.ImplicitSyntaxSugar;
+            | Features.ImplicitSyntaxSugar
+            | Features.CSharpGarbageCollection;
 
         /// <remarks> WARNING! Some of these features include developer warnings, please review the remarks on individual features. </remarks>
         /// <summary> Includes most Lua and bLua features, specifically ones that might be used commonly in modding. </summary>
@@ -103,7 +109,8 @@ namespace bLua
             | Features.MathLibrary
             | Features.IO
             | Features.ThreadMacros
-            | Features.HelperMacros;
+            | Features.HelperMacros
+            | Features.CSharpGarbageCollection;
 
         /// <summary> Includes basic Lua and bLua features, avoiding ones that could be potentially used maliciously. </summary>
         public static Features SANDBOX_SAFE = Features.BasicLibrary
@@ -113,7 +120,8 @@ namespace bLua
             | Features.Tables
             | Features.MathLibrary
             | Features.ThreadMacros
-            | Features.HelperMacros;
+            | Features.HelperMacros
+            | Features.CSharpGarbageCollection;
 
         /// <summary> The selected sandbox (set of features) for bLua. </summary>
         public Features features = SANDBOX_SAFE;
@@ -133,6 +141,9 @@ namespace bLua
 
         /// <summary> The millisecond delay between bLua ticks. </summary>
         public int tickInterval = 10; // 10 = 100 ticks per second
+
+        /// <summary> The millisecond delay between bLua's internal C# garbage collection. If the CSharpGarbageCollection feature isn't enabled, or set to 0, this does nothing. </summary>
+        public int cSharpGarbageCollectionInterval = 10000; // 10,000 = 1 collection per 10 seconds
 
         public enum AutoRegisterTypes
         {
@@ -297,7 +308,7 @@ namespace bLua
 
                     return Time.time;
 #else
-                return Time.time;
+                    return Time.time;
 #endif
                 });
 
@@ -310,8 +321,8 @@ namespace bLua
                     OnTick.AddListener(TickCoroutines);
                 }
 
-                DoBuffer("builtin_coroutines", @"builtin_coroutines = {}");
-                callco = DoBuffer("callco",
+                DoBuffer("blua_internal_builtincoroutines", @"builtin_coroutines = {}");
+                internalLua_callCoroutine = DoBuffer("blua_internal_callcoroutine",
                     @"return function(fn, a, b, c, d, e, f, g, h)
                         local co = coroutine.create(fn)
                         local res, error = coroutine.resume(co, a, b, c, d, e, f, g, h)
@@ -322,7 +333,7 @@ namespace bLua
                             builtin_coroutines[#builtin_coroutines+1] = co
                         end
                     end");
-                updateco = DoBuffer("updateco",
+                internalLua_updateCoroutine = DoBuffer("blua_internal_updatecoroutine",
                     @"return function()
                         local allRunning = true
                         for _,co in ipairs(builtin_coroutines) do
@@ -346,7 +357,7 @@ namespace bLua
                             builtin_coroutines = new_coroutines
                         end
                     end");
-                cancelcos = DoBuffer("cancelcos",
+                internalLua_cancelCoroutines = DoBuffer("blua_internal_cancelcoroutines",
                     @"return function()
                         for _,co in ipairs(builtin_coroutines) do
                             local res, error = coroutine.close(co)
@@ -408,7 +419,7 @@ namespace bLua
 
             if (FeatureEnabled(Features.ThreadMacros))
             {
-                DoBuffer("thread_macros",
+                DoBuffer("blua_internal_threadmacros",
                     @"function wait(t)
                         local startTime = blua_internal_time()
                         while blua_internal_time() < startTime + t do
@@ -438,6 +449,12 @@ namespace bLua
             if (FeatureEnabled(Features.HelperMacros))
             {
                 SetGlobal<Action<bLuaValue>>("print", (s) => OnPrint.Invoke(s.CastToString()));
+            }
+
+            if (FeatureEnabled(Features.CSharpGarbageCollection))
+            {
+                internalLua_garbageCollection = DoBuffer("blua_internal_garbagecollection", @"return function() collectgarbage() end");
+                StartGarbageCollecting();
             }
             #endregion // Feature Handling
 
@@ -521,7 +538,7 @@ namespace bLua
                     InternalTick();
                 }
 
-                await Task.Delay(settings.tickInterval);
+                await Task.Delay(Mathf.Max(settings.tickInterval, 1));
             }
 
             ticking = false;
@@ -562,9 +579,9 @@ namespace bLua
             public int debugTag;
         }
 
-        bLuaValue callco = null;
-        bLuaValue updateco = null;
-        bLuaValue cancelcos = null;
+        bLuaValue internalLua_callCoroutine = null;
+        bLuaValue internalLua_updateCoroutine = null;
+        bLuaValue internalLua_cancelCoroutines = null;
 
         List<ScheduledCoroutine> scheduledCoroutines = new List<ScheduledCoroutine>();
 
@@ -575,7 +592,7 @@ namespace bLua
         {
             using (Lua.profile_luaCo.Auto())
             {
-                Call(updateco);
+                Call(internalLua_updateCoroutine);
 
                 while (scheduledCoroutines.Count > 0)
                 {
@@ -631,9 +648,94 @@ namespace bLua
                 }
             }
 
-            Call(callco, a);
+            Call(internalLua_callCoroutine, a);
         }
         #endregion // Coroutines
+
+        #region C# Garbage Collection
+        ConcurrentQueue<int> deleteQueue = new ConcurrentQueue<int>();
+
+        bLuaValue internalLua_garbageCollection = null;
+
+        bool garbageCollecting = false;
+        bool requestStartGarbageCollecting = false;
+        bool requestStopGarbageCollecting = false;
+
+
+        public void ManualCollectGarbage()
+        {
+            InternalCollectGarbage();
+        }
+
+        async void CollectGarbage()
+        {
+            // Don't have two instances of the CollectGarbage thread; if this value is already set, don't continue
+            if (garbageCollecting)
+            {
+                return;
+            }
+
+            garbageCollecting = true;
+            requestStartGarbageCollecting = false;
+
+            // Only continue collecting while this value is set. This allows us to close the garbage collection thread from outside of it when we need to
+            while (!requestStopGarbageCollecting)
+            {
+                InternalCollectGarbage();
+
+                await Task.Delay(Mathf.Max(settings.cSharpGarbageCollectionInterval, 1));
+            }
+
+            garbageCollecting = false;
+            requestStopGarbageCollecting = false;
+
+            // If we've already re-requested to start garbage collecting again, go ahead and handle that here as the previous CollectGarbage() call would have failed
+            if (requestStartGarbageCollecting)
+            {
+                StartGarbageCollecting();
+            }
+        }
+
+        void InternalCollectGarbage()
+        {
+            Call(internalLua_garbageCollection);
+
+            int refid;
+            while (deleteQueue.TryDequeue(out refid))
+            {
+                Lua.DestroyDynValue(this, refid);
+            }
+        }
+
+        public void StartGarbageCollecting()
+        {
+            if (!FeatureEnabled(Features.CSharpGarbageCollection))
+            {
+                Debug.LogError("Can't use StartGarbageCollecting when the CSharpGarbageCollection feature is disabled.");
+                return;
+            }
+            
+            if (settings.cSharpGarbageCollectionInterval <= 0)
+            {
+                Debug.LogError("Can't use StartGarbageCollecting when this instance's setting for cSharpGarbageCollectionInterval is less than 0.");
+                return;
+            }
+
+            CollectGarbage();
+            requestStartGarbageCollecting = true;
+        }
+
+        public void StopGarbageCollecting()
+        {
+            requestStopGarbageCollecting = true;
+        }
+
+        public void MarkForCSharpGarbageCollection(int _referenceID)
+        {
+            deleteQueue.Enqueue(_referenceID);
+        }
+
+        #endregion // C# Garbage Collection
 
         #region Globals
         public bLuaValue GetGlobal(string _key)
@@ -724,7 +826,7 @@ namespace bLua
                 {
                     Lua.PushStack(this, _environment); // pushes the given table. S: (buffer)(env)
                     LuaLibAPI.lua_createtable(state, 0, 0); // pushes an empty table. S: (buffer)(env)(emptyTable)
-                    LuaLibAPI.lua_getglobal(state, "_G"); // pushes _G. S: (buffer)(newEenvnv)(emptyTable)(_G)
+                    LuaLibAPI.lua_getglobal(state, "_G"); // pushes _G. S: (buffer)(env)(emptyTable)(_G)
                     LuaLibAPI.lua_setfield(state, -2, Lua.StringToIntPtr("__index")); // sets the stack at index to the -1 stack index's value. pops the value. S: (buffer)(env)(emptyTableWith_GAs__index)
                     LuaLibAPI.lua_setmetatable(state, -2); // pops -1 stack index and sets it to the stack value at index. S: (buffer)(envWith_GAs__index)
                     LuaLibAPI.lua_setupvalue(state, -2, 1); // assigns -1 stack index to the upvalue for value in stack at index. S: (bufferWithEnvUpvalue)

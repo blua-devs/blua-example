@@ -283,8 +283,15 @@ namespace bLua
                     {
                         liveObjects[i] = _instance.liveObjects[i];
                     }
-
                     _instance.liveObjects = liveObjects;
+
+                    // keep syntax sugar proxies inline with live objects
+                    object[] syntaxSugarProxies = new object[_instance.syntaxSugarProxies.Length * 2];
+                    for (int i = 0; i < _instance.syntaxSugarProxies.Length; ++i)
+                    {
+                        syntaxSugarProxies[i] = _instance.syntaxSugarProxies[i];
+                    }
+                    _instance.syntaxSugarProxies = syntaxSugarProxies;
                 }
 
                 objIndex = _instance.nextLiveObject;
@@ -296,8 +303,6 @@ namespace bLua
             LuaLibAPI.lua_setiuservalue(_instance.state, -2, 1);
             Lua.PushStack(_instance, entry.metatable);
             LuaLibAPI.lua_setmetatable(_instance.state, -2);
-
-            string msg = Lua.TraceMessage(_instance, "live object");
 
             _instance.liveObjects[objIndex] = _object;
         }
