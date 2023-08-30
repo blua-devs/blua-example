@@ -732,9 +732,11 @@ namespace bLua
 
         public void MarkForCSharpGarbageCollection(int _referenceID)
         {
-            deleteQueue.Enqueue(_referenceID);
+            if (FeatureEnabled(Features.CSharpGarbageCollection))
+            {
+                deleteQueue.Enqueue(_referenceID);
+            }
         }
-
         #endregion // C# Garbage Collection
 
         #region Globals
