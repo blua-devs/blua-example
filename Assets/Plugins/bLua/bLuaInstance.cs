@@ -819,9 +819,10 @@ namespace bLua
                 int result = LuaXLibAPI.luaL_loadbufferx(state, _text, (ulong)_text.Length, _name, null); // S: (buffer)
                 if (result != 0)
                 {
-                    string msg = Lua.GetString(state, -1);
+                    string error = Lua.GetString(state, -1);
                     Lua.LuaPop(state, 1);
-                    throw new bLuaException(msg);
+                    Error($"{bLuaError.error_inBuffer}{error}");
+                    return;
                 }
 
                 if (_environment != null)
@@ -841,9 +842,10 @@ namespace bLua
 
                 if (result != 0)
                 {
-                    string msg = Lua.GetString(state, -1);
+                    string error = Lua.GetString(state, -1);
                     Lua.LuaPop(state, 1);
-                    throw new bLuaException(msg);
+                    Error($"{bLuaError.error_inBuffer}{error}");
+                    return;
                 }
             }
         }
@@ -880,7 +882,7 @@ namespace bLua
                     string error = Lua.GetString(state, -1);
                     Lua.LuaPop(state, 1);
                     Error($"{bLuaError.error_inFunctionCall}{error}");
-                    throw new bLuaException(error);
+                    return null;
                 }
 
                 return Lua.PopStackIntoValue(this);

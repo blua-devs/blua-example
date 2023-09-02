@@ -21,6 +21,7 @@ namespace bLua.Internal
 
         public const string error_callingFunction = "error calling function: ";
         public const string error_callingDelegate = "error calling delegate: ";
+        public const string error_inBuffer = "error in buffer: ";
         public const string error_inFunctionCall = "error in function call: ";
         public const string error_inMetamethodCall = "error in function call: ";
         public const string error_setProperty = "failed to set property: ";
