@@ -44,5 +44,7 @@ namespace bLua.Internal
         public const string error_operationEquality = "failed equals operation (==) on types: ";
         public const string error_operationLessThan = "failed less than/greater than operation (< / >) on types: ";
         public const string error_operationLessThanOrEqual = "failed less than or equal/greater than or equal operation (<= / >=) on types: ";
+
+        public const string error_stackTracebackPrepend = "stack traceback:\n\t";
     }
 } // bLua.Internal namespace

@@ -186,7 +186,7 @@ namespace bLua
             int ntype = LuaLibAPI.lua_getiuservalue(_instance.state, _nstack, 1);
             if (ntype != (int)DataType.Number)
             {
-                _instance.Error($"{bLuaError.error_invalidUserdata}");
+                _instance.ErrorFromCSharp($"{bLuaError.error_invalidUserdata}");
                 Lua.PopStack(_instance);
                 return null;
             }

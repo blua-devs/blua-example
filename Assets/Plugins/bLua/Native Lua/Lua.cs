@@ -112,15 +112,14 @@ namespace bLua.NativeLua
             return (DataType)LuaLibAPI.lua_type(_instance.state, -1);
         }
 
+        /// <summary> Returns a stack trace from the top of the stack. </summary>
+        /// <param name="_message">An optional message to be prepended to the returned trace</param>
+        /// <param name="_level">The level in the stack to start tracing from</param>
+        /// <returns></returns>
         public static string TraceMessage(bLuaInstance _instance, string _message = null, int _level = 1)
         {
-            if (_message == null)
-            {
-                _message = "stack";
-            }
             LuaLibAPI.lua_checkstack(_instance.state, 1);
-
-            LuaXLibAPI.luaL_traceback(_instance.state, _instance.state, _message, _level);
+            LuaXLibAPI.luaL_traceback(_instance.state, _instance.state, _message != null ? _message : "", _level);
             return PopString(_instance);
         }
         #endregion // Miscellaneous
@@ -271,7 +270,7 @@ namespace bLua.NativeLua
             else
             {
                 LuaLibAPI.lua_pushnil(_instance.state);
-                _instance.Error($"{bLuaError.error_unrecognizedStackPush}{_object.GetType()}");
+                _instance.ErrorFromCSharp($"{bLuaError.error_unrecognizedStackPush}{_object.GetType()}");
             }
         }
 

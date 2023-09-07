@@ -158,15 +158,19 @@ namespace bLua
 
         public enum InternalErrorVerbosity
         {
-            /// <summary> (Default) Shows the error message sent from the Lua library. Never show the engine trace for errors. </summary>
-            Normal,
+            /// <summary> (No Traces) Shows the error message sent from the Lua library. Never show the engine trace for errors. </summary>
+            Minimal = 1,
             /// <remarks> WARNING! You must have the Debug feature enabled to grant bLua access to the debug library! </remarks>
-            /// <summary> (High) Shows the error message sent from the Lua library as well as the engine trace (debug.traceback) for the exception. </summary>
-            Verbose
+            /// <summary> (Lua Traces) Shows the error message sent from the Lua library as well as the engine trace (debug.traceback) for the exception. </summary>
+            Normal = 2,
+            /// <remarks> WARNING! You must have the Debug feature enabled to grant bLua access to the debug library! </remarks>
+            /// <summary> (Lua + C# Traces) Shows the error message sent from the Lua library as well as the engine trace (debug.traceback) for the
+            /// exception. Additionally shows the CSharp stack trace for any exceptions inside of C# code run from Lua. </summary>
+            Verbose = 3
         }
 
         /// <summary> Controls how detailed the error messages from internal bLua are. Read the summary of the different options for more info. </summary>
-        public InternalErrorVerbosity internalErrorVerbosity = InternalErrorVerbosity.Normal;
+        public InternalErrorVerbosity internalVerbosity = InternalErrorVerbosity.Normal;
     }
 
     public class bLuaInstance : IDisposable
@@ -272,24 +276,29 @@ namespace bLua
                 bLuaUserData.RegisterAllBLuaUserData(this);
             }
 
-            // Make sure internal bLua Lua (such as the coroutine feature) has a way to call errors properly
-            string callInternalErrorLua = @"";
-            switch (settings.internalErrorVerbosity)
+            SetGlobal<Action<string>>("blua_internal_error", (e) =>
             {
-                case bLuaSettings.InternalErrorVerbosity.Normal:
-                    SetGlobal<Action<string>>("blua_internal_error", (e) => Error(e));
-                    callInternalErrorLua = @"blua_internal_error(error)";
-                    break;
-                case bLuaSettings.InternalErrorVerbosity.Verbose:
-                    SetGlobal<Action<string, string>>("blua_internal_error", (e, et) => Error(e, et));
-                    callInternalErrorLua = @"blua_internal_error(error, debug.traceback(co))";
-
-                    if (!settings.features.HasFlag(Features.Debug))
+                // Reformat the original error message (which shows a line number etc) to just the error msg, and
+                // let the error handler grab a full trace and parameterize it properly
+                string[] splitMessage = e.Split(':');
+                if (splitMessage.Length >= 3)
+                {
+                    string messageStartingAfterTrace = "";
+                    for (int i = 2; i < splitMessage.Length; i++)
                     {
-                        Debug.LogError("You cannot use the Verbose InternalErrorVerbosity unless you have the Debug feature enabled! Expect errors/issues.");
+                        messageStartingAfterTrace += splitMessage[i];
                     }
-                    break;
-            }
+                    e = messageStartingAfterTrace.TrimStart();
+                }
+
+                string stackTrace = "";
+                if (settings.internalVerbosity >= bLuaSettings.InternalErrorVerbosity.Normal)
+                {
+                    stackTrace = Lua.TraceMessage(this);
+                }
+
+                ErrorFromLua(e, stackTrace);
+            });
 
             #region Feature Handling
             if (FeatureEnabled(Features.BasicLibrary))
@@ -327,7 +336,7 @@ namespace bLua
                         local co = coroutine.create(fn)
                         local res, error = coroutine.resume(co, a, b, c, d, e, f, g, h)
                         if not res then
-                            " + callInternalErrorLua + @"
+                            blua_internal_error(error)
                         end
                         if coroutine.status(co) ~= 'dead' then
                             builtin_coroutines[#builtin_coroutines+1] = co
@@ -339,7 +348,7 @@ namespace bLua
                         for _,co in ipairs(builtin_coroutines) do
                             local res, error = coroutine.resume(co)
                             if not res then
-                                " + callInternalErrorLua + @"
+                                blua_internal_error(error)
                             end
                             if coroutine.status(co) == 'dead' then
                                 allRunning = false
@@ -362,7 +371,7 @@ namespace bLua
                         for _,co in ipairs(builtin_coroutines) do
                             local res, error = coroutine.close(co)
                             if not res then
-                                " + callInternalErrorLua + @"
+                                blua_internal_error(error)
                             end
                         end
                         builtin_coroutines = {}
@@ -448,7 +457,17 @@ namespace bLua
 
             if (FeatureEnabled(Features.HelperMacros))
             {
-                SetGlobal<Action<bLuaValue>>("print", (s) => OnPrint.Invoke(s.CastToString()));
+                SetGlobal<Action<bLuaValue>>("print", (s) =>
+                {
+                    string message = s.CastToString();
+
+                    if (settings.internalVerbosity >= bLuaSettings.InternalErrorVerbosity.Normal)
+                    {
+                        message += Lua.TraceMessage(this);
+                    }
+
+                    OnPrint.Invoke(message);
+                });
             }
 
             if (FeatureEnabled(Features.CSharpGarbageCollection))
@@ -758,30 +777,58 @@ namespace bLua
         /// <summary> This delegate is called whenever a Lua Error happens. Allows for bLua features (or developers) to listen. </summary>
         public LuaErrorDelegate LuaErrorHandler;
 
-        public void Error(string _message, string _engineTrace = null)
+        void ErrorInternal(string _message, string _luaStackTrace = null, string _cSharpStackTrace = null)
         {
             if (LuaErrorHandler != null)
             {
-                LuaErrorHandler(_message, _engineTrace);
+                LuaErrorHandler(_message, _luaStackTrace != null ? _luaStackTrace : "");
             }
 
-            string msg = Lua.TraceMessage(this, _message);
-            if (settings.internalErrorVerbosity == bLuaSettings.InternalErrorVerbosity.Verbose)
+            if (settings.internalVerbosity >= bLuaSettings.InternalErrorVerbosity.Normal
+                && !string.IsNullOrEmpty(_luaStackTrace))
             {
-                msg += "\n\n---\nEngine error details:\n" + (_engineTrace != null ? _engineTrace : "[no engine trace]");
+                _luaStackTrace = _luaStackTrace.TrimStart();
+                _message += "\n" + _luaStackTrace; 
             }
 
-            Debug.LogError(msg);
+            if (settings.internalVerbosity >= bLuaSettings.InternalErrorVerbosity.Verbose
+                && !string.IsNullOrEmpty(_cSharpStackTrace))
+            {
+                _cSharpStackTrace = _cSharpStackTrace.TrimStart();
+                _message += "\n" + _cSharpStackTrace;
+            }
+
+            if (settings.internalVerbosity >= bLuaSettings.InternalErrorVerbosity.Minimal)
+            {
+                Debug.LogError(_message);
+            }
         }
 
-        public void ExceptionError(Exception _exception, string _prependedErrorInfo = "")
+        public void ErrorFromLua(string _message, string _luaStackTrace = null)
+        {
+            if (string.IsNullOrEmpty(_luaStackTrace))
+            {
+                _luaStackTrace = Lua.TraceMessage(this);
+            }
+
+            ErrorInternal(_message, _luaStackTrace, null);
+        }
+
+        public void ErrorFromCSharp(Exception _exception, string _prependedErrorInfo = "")
         {
             Exception ex = _exception;
             while (ex.InnerException != null)
             {
                 ex = ex.InnerException;
             }
-            Error($"{_prependedErrorInfo}{ex.Message}", $"{ex.StackTrace}");
+
+            ErrorFromCSharp($"{_prependedErrorInfo}{ex.Message}", $"{ex.StackTrace}");
+        }
+        public void ErrorFromCSharp(string _message, string _cSharpStackTrace = null)
+        {
+            string luaStackTrace = Lua.TraceMessage(this);
+
+            ErrorInternal(_message, luaStackTrace, _cSharpStackTrace);
         }
         #endregion // Errors
 
@@ -819,7 +866,7 @@ namespace bLua
                 {
                     string error = Lua.GetString(state, -1);
                     Lua.LuaPop(state, 1);
-                    Error($"{bLuaError.error_inBuffer}{error}");
+                    ErrorFromLua($"{bLuaError.error_inBuffer}", $"{bLuaError.error_stackTracebackPrepend}{error}");
                     return;
                 }
 
@@ -842,7 +889,7 @@ namespace bLua
                 {
                     string error = Lua.GetString(state, -1);
                     Lua.LuaPop(state, 1);
-                    Error($"{bLuaError.error_inBuffer}{error}");
+                    ErrorFromLua($"{bLuaError.error_inBuffer}", $"{bLuaError.error_stackTracebackPrepend}{error}");
                     return;
                 }
             }
@@ -870,7 +917,6 @@ namespace bLua
                 }
 
                 int result;
-                //TODO set the error handler to get the stack trace.
                 using (Lua.profile_luaCallInner.Auto())
                 {
                     result = LuaLibAPI.lua_pcallk(state, _args.Length, 1, 0, 0L, IntPtr.Zero);
@@ -879,7 +925,7 @@ namespace bLua
                 {
                     string error = Lua.GetString(state, -1);
                     Lua.LuaPop(state, 1);
-                    Error($"{bLuaError.error_inFunctionCall}{error}");
+                    ErrorFromLua($"{bLuaError.error_inFunctionCall}", $"{error}");
                     return null;
                 }
 
@@ -935,7 +981,7 @@ namespace bLua
 
                 if (n < 0 || n >= mainThreadInstance.registeredMethods.Count)
                 {
-                    mainThreadInstance.Error($"{bLuaError.error_invalidMethodIndex}{n}");
+                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_invalidMethodIndex}{n}");
                     return 0;
                 }
 
@@ -1001,7 +1047,7 @@ namespace bLua
             }
             catch (Exception e)
             {
-                mainThreadInstance.ExceptionError(e, bLuaError.error_callingDelegate);
+                mainThreadInstance.ErrorFromCSharp(e, bLuaError.error_callingDelegate);
                 return 0;
             }
             finally
@@ -1026,7 +1072,7 @@ namespace bLua
 
                 if (n < 0 || n >= mainThreadInstance.registeredMethods.Count)
                 {
-                    mainThreadInstance.Error($"{bLuaError.error_invalidMethodIndex}{n}");
+                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_invalidMethodIndex}{n}");
                     return 0;
                 }
 
@@ -1092,7 +1138,7 @@ namespace bLua
             }
             catch (Exception e)
             {
-                mainThreadInstance.ExceptionError(e, bLuaError.error_callingDelegate);
+                mainThreadInstance.ErrorFromCSharp(e, bLuaError.error_callingDelegate);
                 return 0;
             }
             finally
@@ -1114,7 +1160,7 @@ namespace bLua
                 int stackSize = LuaLibAPI.lua_gettop(_state);
                 if (stackSize == 0 || LuaLibAPI.lua_type(_state, 1) != (int)DataType.UserData)
                 {
-                    mainThreadInstance.Error($"{bLuaError.error_objectNotProvided}");
+                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_objectNotProvided}");
                     return 0;
                 }
 
@@ -1122,7 +1168,7 @@ namespace bLua
 
                 if (n < 0 || n >= mainThreadInstance.registeredMethods.Count)
                 {
-                    mainThreadInstance.Error($"{bLuaError.error_invalidMethodIndex}{n}");
+                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_invalidMethodIndex}{n}");
                     return 0;
                 }
 
@@ -1179,14 +1225,14 @@ namespace bLua
 
                 if (LuaLibAPI.lua_gettop(_state) < 1)
                 {
-                    mainThreadInstance.Error($"{bLuaError.error_stackIsEmpty}");
+                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_stackIsEmpty}");
                     return 0;
                 }
 
                 int t = LuaLibAPI.lua_type(_state, 1);
                 if (t != (int)DataType.UserData)
                 {
-                    mainThreadInstance.Error($"{bLuaError.error_objectIsNotUserdata}{(DataType)t}");
+                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_objectIsNotUserdata}{(DataType)t}");
                     return 0;
                 }
 
@@ -1194,7 +1240,7 @@ namespace bLua
                 int res = LuaLibAPI.lua_getiuservalue(_state, 1, 1);
                 if (res != (int)DataType.Number)
                 {
-                    mainThreadInstance.Error($"{bLuaError.error_objectNotProvided}");
+                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_objectNotProvided}");
                     return 0;
                 }
                 int liveObjectIndex = LuaLibAPI.lua_tointegerx(_state, -1, IntPtr.Zero);
@@ -1207,7 +1253,7 @@ namespace bLua
             }
             catch (Exception e)
             {
-                mainThreadInstance.ExceptionError(e, bLuaError.error_callingFunction);
+                mainThreadInstance.ErrorFromCSharp(e, bLuaError.error_callingFunction);
                 return 0;
             }
             finally
@@ -1287,7 +1333,7 @@ namespace bLua
             }
             catch (Exception e)
             {
-                mainThreadInstance.ExceptionError(e, bLuaError.error_callingFunction);
+                mainThreadInstance.ErrorFromCSharp(e, bLuaError.error_callingFunction);
                 return 0;
             }
             finally
