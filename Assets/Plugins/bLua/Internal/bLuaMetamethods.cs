@@ -295,6 +295,7 @@ namespace bLua.Internal
         }
         #endregion // Helper functions
 
+        [MonoPInvokeCallback]
         public static int Metamethod_Call(IntPtr _state)
         {
             bLuaInstance mainThreadInstance = bLuaInstance.GetInstanceByState(Lua.GetMainThread(_state));
@@ -335,6 +336,7 @@ namespace bLua.Internal
             }
         }
 
+        [MonoPInvokeCallback]
         public static int Metamethod_Index(IntPtr _state)
         {
             bLuaInstance mainThreadInstance = bLuaInstance.GetInstanceByState(Lua.GetMainThread(_state));
@@ -425,6 +427,7 @@ namespace bLua.Internal
             }
         }
 
+        [MonoPInvokeCallback]
         public static int Metamethod_NewIndex(IntPtr _state)
         {
             bLuaInstance mainThreadInstance = bLuaInstance.GetInstanceByState(Lua.GetMainThread(_state));
@@ -486,6 +489,7 @@ namespace bLua.Internal
             }
         }
 
+        [MonoPInvokeCallback]
         public static int MetaMethod_GC(IntPtr _state)
         {
             bLuaInstance mainThreadInstance = bLuaInstance.GetInstanceByState(Lua.GetMainThread(_state));
@@ -504,6 +508,7 @@ namespace bLua.Internal
             return 0;
         }
 
+        [MonoPInvokeCallback]
         public static int Metamethod_Operator(IntPtr _state)
         {
             bLuaInstance mainThreadInstance = bLuaInstance.GetInstanceByState(Lua.GetMainThread(_state));
@@ -546,6 +551,7 @@ namespace bLua.Internal
             }
         }
 
+        [MonoPInvokeCallback]
         public static int Metamethod_Concatenation(IntPtr _state)
         {
             bLuaInstance mainThreadInstance = bLuaInstance.GetInstanceByState(Lua.GetMainThread(_state));
@@ -586,6 +592,7 @@ namespace bLua.Internal
             }
         }
 
+        [MonoPInvokeCallback]
         public static int Metamethod_ToString(IntPtr _state)
         {
             bLuaInstance mainThreadInstance = bLuaInstance.GetInstanceByState(Lua.GetMainThread(_state));

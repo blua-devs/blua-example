@@ -7,6 +7,11 @@ using bLua.Internal;
 
 namespace bLua.NativeLua
 {
+    public class MonoPInvokeCallbackAttribute : Attribute
+    {
+
+    }
+
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public delegate int LuaCFunction(IntPtr state);
 
@@ -35,6 +40,8 @@ namespace bLua.NativeLua
         public const string LUA_DLL = "lua54.dll";
 #elif UNITY_EDITOR_OSX || UNITY_STANDALONE_OSX
         public const string LUA_DLL = "Lua";
+#elif UNITY_EDITOR_LINUX || UNITY_STANDALONE_LINUX
+        public const string LUA_DLL = "liblua54.so";
 #endif
 
         public static int LUA_TNONE = -1;
@@ -53,7 +60,7 @@ namespace bLua.NativeLua
         static StrLen strlen = new StrLen();
 
 
-        #region Miscellaneous
+#region Miscellaneous
         public static IntPtr GetMainThread(IntPtr _state)
         {
             LuaLibAPI.lua_rawgeti(_state, LUA_REGISTRYINDEX, LUA_RIDX_MAINTHREAD);
@@ -122,9 +129,9 @@ namespace bLua.NativeLua
             LuaXLibAPI.luaL_traceback(_instance.state, _instance.state, _message != null ? _message : "", _level);
             return PopString(_instance);
         }
-        #endregion // Miscellaneous
+#endregion // Miscellaneous
 
-        #region Push (Stack)
+#region Push (Stack)
         public static void PushNil(bLuaInstance _instance)
         {
             LuaLibAPI.lua_checkstack(_instance.state, 1);
@@ -286,9 +293,9 @@ namespace bLua.NativeLua
 
             return LuaLibAPI.lua_rawgeti(_instance.state, LUA_REGISTRYINDEX, _value.referenceID);
         }
-        #endregion // Push (Stack)
+#endregion // Push (Stack)
 
-        #region Pop (Stack)
+#region Pop (Stack)
         public static void LuaPop(IntPtr _state, int n)
         {
             LuaLibAPI.lua_settop(_state, -(n) - 1);
@@ -485,9 +492,9 @@ namespace bLua.NativeLua
         {
             LuaPop(_instance.state, 1);
         }
-        #endregion // Pop (Stack)
+#endregion // Pop (Stack)
 
-        #region New Values
+#region New Values
         public static bLuaValue NewMetaTable(bLuaInstance _instance, string _name)
         {
             LuaXLibAPI.luaL_newmetatable(_instance.state, _name);
@@ -514,9 +521,9 @@ namespace bLua.NativeLua
             PushOntoStack(_instance, _value);
             return PopStackIntoValue(_instance);
         }
-        #endregion // New Values
+#endregion // New Values
 
-        #region Tables
+#region Tables
         public static bLuaValue GetTable<T>(bLuaInstance _instance, bLuaValue _table, T _key)
         {
             PushStack(_instance, _table);
@@ -536,9 +543,9 @@ namespace bLua.NativeLua
             LuaLibAPI.lua_settable(_instance.state, -3);
             PopStack(_instance);
         }
-        #endregion // Tables
+#endregion // Tables
 
-        #region Arrays
+#region Arrays
         public static int Length(bLuaInstance _instance, bLuaValue _value)
         {
             PushStack(_instance, _value);
@@ -584,6 +591,6 @@ namespace bLua.NativeLua
             LuaLibAPI.lua_seti(_instance.state, -2, len + 1);
             PopStack(_instance);
         }
-        #endregion // Arrays
+#endregion // Arrays
     }
 } // bLua.NativeLua namespace

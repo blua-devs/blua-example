@@ -996,6 +996,7 @@ namespace bLua
         }
 
         #region C Functions called from Lua
+        [MonoPInvokeCallback]
         public static int CallGlobalMethod(IntPtr _state)
         {
             IntPtr mainThreadState = Lua.GetMainThread(_state);
@@ -1087,6 +1088,7 @@ namespace bLua
             }
         }
 
+        [MonoPInvokeCallback]
         public static int CallDelegate(IntPtr _state)
         {
             IntPtr mainThreadState = Lua.GetMainThread(_state);
@@ -1178,6 +1180,7 @@ namespace bLua
             }
         }
 
+        [MonoPInvokeCallback]
         public static int CallUserDataFunction(IntPtr _state)
         {
             IntPtr mainThreadState = Lua.GetMainThread(_state);
@@ -1293,6 +1296,7 @@ namespace bLua
             }
         }
 
+        [MonoPInvokeCallback]
         public static int CallStaticUserDataFunction(IntPtr _state)
         {
             IntPtr mainThreadState = Lua.GetMainThread(_state);
