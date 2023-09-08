@@ -276,29 +276,60 @@ namespace bLua
                 bLuaUserData.RegisterAllBLuaUserData(this);
             }
 
-            SetGlobal<Action<string>>("blua_internal_error", (e) =>
+            string callInternalLuaError = @"";
+            if (settings.internalVerbosity >= bLuaSettings.InternalErrorVerbosity.Normal)
             {
-                // Reformat the original error message (which shows a line number etc) to just the error msg, and
-                // let the error handler grab a full trace and parameterize it properly
-                string[] splitMessage = e.Split(':');
-                if (splitMessage.Length >= 3)
+                callInternalLuaError = @"blua_internal_error(error, debug.traceback(co))";
+                SetGlobal<Action<string, string>>("blua_internal_error", (e, t) =>
                 {
-                    string messageStartingAfterTrace = "";
-                    for (int i = 2; i < splitMessage.Length; i++)
+                    // Reformat the original error message (which shows a line number etc) to just the error msg, and
+                    // let the error handler grab a full trace and parameterize it properly
+                    string[] splitMessage = e.Split(':');
+                    if (splitMessage.Length >= 3)
                     {
-                        messageStartingAfterTrace += splitMessage[i];
+                        string messageStartingAfterTrace = "";
+                        for (int i = 2; i < splitMessage.Length; i++)
+                        {
+                            messageStartingAfterTrace += splitMessage[i];
+                        }
+                        e = messageStartingAfterTrace.TrimStart();
                     }
-                    e = messageStartingAfterTrace.TrimStart();
-                }
 
-                string stackTrace = "";
-                if (settings.internalVerbosity >= bLuaSettings.InternalErrorVerbosity.Normal)
+                    ErrorFromLua(e, t);
+                });
+
+                if (!FeatureEnabled(Features.Debug))
                 {
-                    stackTrace = Lua.TraceMessage(this);
+                    Debug.LogError($"You cannot use the {settings.internalVerbosity} level of {settings.internalVerbosity.GetType().Name} unless you have the {Features.Debug} feature enabled! Expect errors/issues.\nThis is because bLua internally uses debug.traceback() to get a proper stack trace - using Lua.Trace() instead will give a stack trace pointing to bLua code, not the user code.");
                 }
+            }
+            else
+            {
+                callInternalLuaError = @"blua_internal_error(error)";
+                SetGlobal<Action<string>>("blua_internal_error", (e) =>
+                {
+                    // Reformat the original error message (which shows a line number etc) to just the error msg, and
+                    // let the error handler grab a full trace and parameterize it properly
+                    string[] splitMessage = e.Split(':');
+                    if (splitMessage.Length >= 3)
+                    {
+                        string messageStartingAfterTrace = "";
+                        for (int i = 2; i < splitMessage.Length; i++)
+                        {
+                            messageStartingAfterTrace += splitMessage[i];
+                        }
+                        e = messageStartingAfterTrace.TrimStart();
+                    }
 
-                ErrorFromLua(e, stackTrace);
-            });
+                    string stackTrace = "";
+                    if (settings.internalVerbosity >= bLuaSettings.InternalErrorVerbosity.Normal)
+                    {
+                        stackTrace = Lua.TraceMessage(this);
+                    }
+
+                    ErrorFromLua(e, stackTrace);
+                });
+            }
 
             #region Feature Handling
             if (FeatureEnabled(Features.BasicLibrary))
@@ -336,7 +367,7 @@ namespace bLua
                         local co = coroutine.create(fn)
                         local res, error = coroutine.resume(co, a, b, c, d, e, f, g, h)
                         if not res then
-                            blua_internal_error(error)
+                            " + callInternalLuaError + @"
                         end
                         if coroutine.status(co) ~= 'dead' then
                             builtin_coroutines[#builtin_coroutines+1] = co
@@ -348,7 +379,7 @@ namespace bLua
                         for _,co in ipairs(builtin_coroutines) do
                             local res, error = coroutine.resume(co)
                             if not res then
-                                blua_internal_error(error)
+                                " + callInternalLuaError + @"
                             end
                             if coroutine.status(co) == 'dead' then
                                 allRunning = false
@@ -371,7 +402,7 @@ namespace bLua
                         for _,co in ipairs(builtin_coroutines) do
                             local res, error = coroutine.close(co)
                             if not res then
-                                blua_internal_error(error)
+                                " + callInternalLuaError + @"
                             end
                         end
                         builtin_coroutines = {}
