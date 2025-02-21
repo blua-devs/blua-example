@@ -1,5 +1,4 @@
-using System.Collections;
-using System.Collections.Generic;
+using System;
 using UnityEngine;
 
 namespace bLua.ExampleUserData
@@ -102,11 +101,23 @@ namespace bLua.ExampleUserData
         }
         public static bool operator ==(bLuaVector3 a, bLuaVector3 b)
         {
-            return a.x == b.x && a.y == b.y && a.z == b.z;
+            return a.Equals(b);
         }
         public static bool operator !=(bLuaVector3 a, bLuaVector3 b)
         {
             return !(a == b);
         }
+        public bool Equals(bLuaVector3 v)
+        {
+            return __vector3.Equals(v.__vector3);
+        }
+        public override bool Equals(object o)
+        {
+            return o is bLuaVector3 v && Equals(v);
+        }
+        public override int GetHashCode()
+        {
+            return __vector3.GetHashCode();
+        }
     }
-}
+} // bLua.ExampleUserData namespace
