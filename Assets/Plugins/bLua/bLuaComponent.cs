@@ -64,7 +64,7 @@ public class bLuaComponent : MonoBehaviour
         {
             instance = new bLuaInstance(new bLuaSettings()
             {
-                features = bLuaSettings.SANDBOX_SAFE,
+                features = bLuaSettings.SANDBOX_ALL,
                 tickBehavior = bLuaSettings.TickBehavior.Manual,
                 autoRegisterTypes = bLuaSettings.AutoRegisterTypes.None
             });
