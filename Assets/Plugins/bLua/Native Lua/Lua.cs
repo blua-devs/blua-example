@@ -45,19 +45,19 @@ namespace bLua.NativeLua
 #endif
 
         public static int LUA_TNONE = -1;
-        public static int LUAI_MAXSTACK = 1000000;
-        public static int LUA_REGISTRYINDEX = (-LUAI_MAXSTACK - 1000);
+        public static int LUA_MAXSTACK = 1000000;
+        public static int LUA_REGISTRYINDEX = (-LUA_MAXSTACK - 1000);
 
         public static int LUA_RIDX_MAINTHREAD = 1;
         public static int LUA_RIDX_GLOBALS = 2;
         public static int LUA_RIDX_LAST = LUA_RIDX_GLOBALS;
 
-        public static ProfilerMarker profile_luaGC = new ProfilerMarker("Lua.GC");
-        public static ProfilerMarker profile_luaCo = new ProfilerMarker("Lua.Coroutine");
-        public static ProfilerMarker profile_luaCall = new ProfilerMarker("Lua.Call");
-        public static ProfilerMarker profile_luaCallInner = new ProfilerMarker("Lua.CallInner");
+        public static ProfilerMarker profile_luaGC = new("Lua.GC");
+        public static ProfilerMarker profile_luaCo = new("Lua.Coroutine");
+        public static ProfilerMarker profile_luaCall = new("Lua.Call");
+        public static ProfilerMarker profile_luaCallInner = new("Lua.CallInner");
 
-        static StrLen strlen = new StrLen();
+        private static StrLen strlen = new();
 
 
 #region Miscellaneous
@@ -77,7 +77,7 @@ namespace bLua.NativeLua
             {
                 fixed (byte* p = b)
                 {
-                    return new IntPtr((void*)p);
+                    return new IntPtr(p);
                 }
             }
         }
@@ -157,7 +157,7 @@ namespace bLua.NativeLua
         public static void PushClosure(bLuaInstance _instance, GlobalMethodCallInfo _globalMethodCallInfo)
         {
             LuaCFunction fn = bLuaInstance.CallGlobalMethod;
-            bLuaValue[] upvalues = new bLuaValue[1] { bLuaValue.CreateNumber(_instance, _instance.registeredMethods.Count) };
+            bLuaValue[] upvalues = new bLuaValue[] { bLuaValue.CreateNumber(_instance, _instance.registeredMethods.Count) };
             _instance.registeredMethods.Add(_globalMethodCallInfo);
 
             PushClosure(_instance, fn, upvalues);
@@ -193,7 +193,7 @@ namespace bLua.NativeLua
             }
 
             LuaCFunction fn = bLuaInstance.CallDelegate;
-            bLuaValue[] upvalues = new bLuaValue[1] { bLuaValue.CreateNumber(_instance, _instance.registeredMethods.Count) };
+            bLuaValue[] upvalues = new bLuaValue[] { bLuaValue.CreateNumber(_instance, _instance.registeredMethods.Count) };
 
             DelegateCallInfo methodCallInfo = new DelegateCallInfo()
             {
@@ -223,8 +223,7 @@ namespace bLua.NativeLua
 
         public static void PushOntoStack(bLuaInstance _instance, object _object)
         {
-            bLuaValue dynValue = _object as bLuaValue;
-            if (dynValue != null)
+            if (_object is bLuaValue dynValue)
             {
                 PushStack(_instance, dynValue);
                 return;
@@ -232,52 +231,42 @@ namespace bLua.NativeLua
             else if (bLuaUserData.IsRegistered(_instance, _object.GetType()))
             {
                 bLuaValue ud = bLuaValue.CreateUserData(_instance, _object);
-                Lua.PushStack(_instance, ud);
+                PushStack(_instance, ud);
                 return;
             }
 
             LuaLibAPI.lua_checkstack(_instance.state, 1);
 
-            if (_object == null)
+            switch (_object)
             {
-                LuaLibAPI.lua_pushnil(_instance.state);
-            }
-            else if (_object is int)
-            {
-                LuaLibAPI.lua_pushinteger(_instance.state, (int)_object);
-            }
-            else if (_object is double)
-            {
-                LuaLibAPI.lua_pushnumber(_instance.state, (double)_object);
-            }
-            else if (_object is float)
-            {
-                LuaLibAPI.lua_pushnumber(_instance.state, (double)(float)_object);
-            }
-            else if (_object is bool)
-            {
-                LuaLibAPI.lua_pushboolean(_instance.state, ((bool)_object) ? 1 : 0);
-            }
-            else if (_object is string)
-            {
-                PushString(_instance, (string)_object);
-            }
-            else if (_object is LuaCFunction)
-            {
-                LuaPushCFunction(_instance, _object as LuaCFunction);
-            }
-            else if (_object is GlobalMethodCallInfo)
-            {
-                PushClosure(_instance, _object as GlobalMethodCallInfo);
-            }
-            else if (_object is MulticastDelegate) // Func<> and Action<>
-            {
-                PushClosure(_instance, _object as MulticastDelegate);
-            }
-            else
-            {
-                LuaLibAPI.lua_pushnil(_instance.state);
-                _instance.ErrorFromCSharp($"{bLuaError.error_unrecognizedStackPush}{_object.GetType()}");
+                case int objectInt:
+                    LuaLibAPI.lua_pushinteger(_instance.state, objectInt);
+                    break;
+                case double objectDouble:
+                    LuaLibAPI.lua_pushnumber(_instance.state, objectDouble);
+                    break;
+                case float objectFloat:
+                    LuaLibAPI.lua_pushnumber(_instance.state, objectFloat);
+                    break;
+                case bool objectBool:
+                    LuaLibAPI.lua_pushboolean(_instance.state, objectBool ? 1 : 0);
+                    break;
+                case string objectString:
+                    PushString(_instance, objectString);
+                    break;
+                case LuaCFunction objectFunction:
+                    LuaPushCFunction(_instance, objectFunction);
+                    break;
+                case GlobalMethodCallInfo objectInfo:
+                    PushClosure(_instance, objectInfo);
+                    break;
+                case MulticastDelegate objectDelegate: // Func<> and Action<>
+                    PushClosure(_instance, objectDelegate);
+                    break;
+                default:
+                    LuaLibAPI.lua_pushnil(_instance.state);
+                    _instance.ErrorFromCSharp($"{bLuaError.error_unrecognizedStackPush}{_object.GetType()}");
+                    break;
             }
         }
 
@@ -459,7 +448,7 @@ namespace bLua.NativeLua
             LuaLibAPI.lua_pushnil(_instance.state);
             while (LuaLibAPI.lua_next(_instance.state, -2) != 0)
             {
-                var val = PopStackIntoValue(_instance);
+                bLuaValue val = PopStackIntoValue(_instance);
 
                 if (LuaLibAPI.lua_type(_instance.state, -1) != (int)DataType.String)
                 {

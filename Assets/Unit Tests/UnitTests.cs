@@ -1,6 +1,4 @@
-using System.Collections;
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using UnityEngine.Assertions;
 using UnityEngine;
 using bLua;
@@ -18,7 +16,6 @@ public class TestUserDataClass
         return n + x;
     }
 
-    //see if creating one and returning it by class works.
     public static TestUserDataClass Create(int x)
     {
         return new TestUserDataClass()
@@ -156,7 +153,8 @@ public class UnitTests : MonoBehaviour
     {
         bLuaInstance instance = new bLuaInstance(new bLuaSettings()
         {
-            features = bLuaSettings.SANDBOX_SAFE
+            features = bLuaSettings.SANDBOX_ALL_NONEXPERIMENTAL,
+            internalVerbosity = bLuaSettings.InternalErrorVerbosity.Verbose
         });
 
         Debug.Log("Starting Unit Tests");
@@ -303,13 +301,16 @@ public class UnitTests : MonoBehaviour
         }
 
         Assert.AreEqual(bLua.NativeLua.LuaLibAPI.lua_gettop(instance.state), stackSize);
+        
+        Debug.Log("Finished Unit Tests");
     }
 
     public void RunTestCoroutine()
     {
         bLuaInstance instance = new bLuaInstance(new bLuaSettings()
         {
-            features = bLuaSettings.SANDBOX_SAFE
+            features = bLuaSettings.SANDBOX_ALL_NONEXPERIMENTAL,
+            internalVerbosity = bLuaSettings.InternalErrorVerbosity.Verbose
         });
 
         Debug.Log("Starting Test Coroutine");
@@ -320,6 +321,7 @@ public class UnitTests : MonoBehaviour
                     print('test coroutine ' .. i)
                     coroutine.yield()
                 end
+                print('Finished Test Coroutine')
             end");
 
         using (bLuaValue fn = instance.GetGlobal("testYield"))
@@ -332,7 +334,8 @@ public class UnitTests : MonoBehaviour
     {
         bLuaInstance instance = new bLuaInstance(new bLuaSettings()
         {
-            features = bLuaSettings.SANDBOX_SAFE
+            features = bLuaSettings.SANDBOX_ALL_NONEXPERIMENTAL,
+            internalVerbosity = bLuaSettings.InternalErrorVerbosity.Verbose
         });
 
         Debug.Log("Starting Thread Macros");

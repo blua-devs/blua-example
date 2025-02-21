@@ -1,8 +1,5 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
-using MoonSharp;
 using MoonSharp.Interpreter;
 
 #if UNITY_EDITOR
@@ -16,7 +13,7 @@ public class MoonSharpBenchmarkEditor : Editor
         if (GUILayout.Button("Run Benchmark"))
         {
             MoonSharpBenchmark benchmark = GameObject.Find("Benchmark")?.GetComponent<MoonSharpBenchmark>();
-            benchmark.RunAllBenchmarks();
+            benchmark?.RunAllBenchmarks();
         }
     }
 }
@@ -56,8 +53,7 @@ public class MoonSharpBenchmark : Benchmark
 
     protected override void RunBenchmark(object script, string lua)
     {
-        Script moonSharpScript = script as Script;
-        if (moonSharpScript != null)
+        if (script is Script moonSharpScript)
         {
             moonSharpScript.DoString(lua);
         }

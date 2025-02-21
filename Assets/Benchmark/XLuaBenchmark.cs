@@ -1,6 +1,4 @@
 using System;
-using System.Collections;
-using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 using XLua;
@@ -16,7 +14,7 @@ public class XLuaBenchmarkEditor : Editor
         if (GUILayout.Button("Run Benchmark"))
         {
             XLuaBenchmark benchmark = GameObject.Find("Benchmark")?.GetComponent<XLuaBenchmark>();
-            benchmark.RunAllBenchmarks();
+            benchmark?.RunAllBenchmarks();
         }
     }
 }
@@ -27,7 +25,7 @@ public class XLuaBenchmarkUserData : BenchmarkUserData
 
 
     // Overwritten to return the `xLuaBenchmarkUserData` type
-    new public static XLuaBenchmarkUserData CreateUserDataStatic(int a)
+    public new static XLuaBenchmarkUserData CreateUserDataStatic(int a)
     {
         return new XLuaBenchmarkUserData()
         {
@@ -40,9 +38,9 @@ public class XLuaBenchmarkUserData : BenchmarkUserData
     public override int AddValuesVariableArgs(int a, params object[] b)
     {
         int c = a;
-        for (int i = 0; i < b.Length; i++)
+        foreach (object o in b)
         {
-            c += (int)(System.Int64)b[i];
+            c += (int)(Int64)o;
         }
         return c;
     }
@@ -91,17 +89,16 @@ public class XLuaBenchmark : Benchmark
             scriptEnv.Set("UserData", new XLuaBenchmarkUserData());
 
             // Manually create some of the calls used in the benchmark that XLua has trouble accessing
-            scriptEnv.Set<string, Func<int, string>>("tostring", (i) => { return i.ToString(); });
-            scriptEnv.Set<string, Func<int, XLuaBenchmarkUserData>>("CreateUserDataStatic", (i) => { return XLuaBenchmarkUserData.CreateUserDataStatic(i); });
-            scriptEnv.Set<string, Func<int, int, int>>("AddValuesStatic", (a, b) => { return XLuaBenchmarkUserData.AddValuesStatic(a, b); });
+            scriptEnv.Set<string, Func<int, string>>("tostring", (i) => i.ToString());
+            scriptEnv.Set<string, Func<int, XLuaBenchmarkUserData>>("CreateUserDataStatic", XLuaBenchmarkUserData.CreateUserDataStatic);
+            scriptEnv.Set<string, Func<int, int, int>>("AddValuesStatic", XLuaBenchmarkUserData.AddValuesStatic);
         }
         return luaEnv;
     }
 
     protected override void RunBenchmark(object script, string lua)
     {
-        LuaEnv luaEnv = script as LuaEnv;
-        if (luaEnv != null)
+        if (script is LuaEnv luaEnv)
         {
             luaEnv.DoString(lua, "chunk", scriptEnv);
         }

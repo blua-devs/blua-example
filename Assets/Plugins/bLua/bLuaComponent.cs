@@ -20,10 +20,18 @@ public class bLuaComponentEditor : Editor
         {
             GUILayout.Space(20);
 
-            if (GUILayout.Button("Hot Reload"))
+            bLuaComponent component = target as bLuaComponent;
+            if (component != null)
             {
-                bLuaComponent component = target as bLuaComponent;
-                if (component != null)
+                if (!component.HasRanCode())
+                {
+                    if (GUILayout.Button("Run Code"))
+                    {
+                        component.RunCode();
+                    }                    
+                }
+                
+                if (GUILayout.Button("Hot Reload"))
                 {
                     component.HotReload();
                 }
@@ -36,26 +44,23 @@ public class bLuaComponentEditor : Editor
 public class bLuaComponent : MonoBehaviour
 {
     public static bLuaInstance instance;
-    bLuaValue environment;
+    private bLuaValue environment;
 
     /// <summary> When true, this bLuaComponent will run its code when Unity's Start event fires. If this is set to false, you will need to 
     /// tell the bLuaComponent when to run the code via RunCode(). </summary>
-    [SerializeField]
-    bool runCodeOnStart = true;
+    [SerializeField] private bool runCodeOnStart = true;
 
     /// <summary> When true, this bLuaComponent will attempt to run Lua functions with the following names: "Start, Update, OnDestroy" when
     /// their respective Unity functions are called by Unity. You do not need to add any or all of these functions if you don't want to. </summary>
-    [SerializeField]
-    bool runMonoBehaviourEvents = true;
+    [SerializeField] private bool runMonoBehaviourEvents = true;
 
     /// <summary> The name of the Lua chunk. Used for debug information and error messages. </summary>
-    [SerializeField]
-    string chunkName = "default_component";
+    [SerializeField] private string chunkName = "default_component";
 
     /// <summary> The code that will be run on this component. </summary>
     [SerializeField]
     [TextArea(2, 512)]
-    string code;
+    private string code;
 
 
     private void Awake()
@@ -64,10 +69,22 @@ public class bLuaComponent : MonoBehaviour
         {
             instance = new bLuaInstance(new bLuaSettings()
             {
-                features = bLuaSettings.SANDBOX_ALL,
+                features = bLuaSettings.SANDBOX_ALL_NONEXPERIMENTAL,
                 tickBehavior = bLuaSettings.TickBehavior.Manual,
                 autoRegisterTypes = bLuaSettings.AutoRegisterTypes.None
             });
+            
+            // Register all the types we intend on using
+            instance.RegisterAllBLuaUserData();
+        }
+
+        if (environment == null)
+        {
+            // Set up the global environment with any properties and functions we want
+            environment = bLuaValue.CreateTable(instance);
+            environment.Set("Vector3", new bLuaVector3Library());
+            environment.Set("GameObject", new bLuaGameObjectLibrary());
+            environment.Set("gameObject", new bLuaGameObject(gameObject));
         }
     }
 
@@ -118,24 +135,20 @@ public class bLuaComponent : MonoBehaviour
         RunCode();
     }
 
-    bool ranCode = false;
+    private bool ranCode;
     public void RunCode()
     {
         if (!ranCode)
         {
-            // Register all of the types we intend on using
-            instance.RegisterAllBLuaUserData();
-
-            // Setup the global environment with any properties and functions we want
-            environment = bLuaValue.CreateTable(instance);
-            environment.Set("Vector3", new bLuaVector3Library());
-            environment.Set("GameObject", new bLuaGameObjectLibrary());
-            environment.Set("gameObject", new bLuaGameObject(this.gameObject));
-
             // Run the code
             instance.DoBuffer(chunkName, code, environment);
             ranCode = true;
         }
+    }
+
+    public bool HasRanCode()
+    {
+        return ranCode;
     }
 
     public void RunEvent(string _name)
@@ -143,7 +156,8 @@ public class bLuaComponent : MonoBehaviour
         if (ranCode)
         {
             bLuaValue func = environment.Get(_name);
-            if (func != null && func.Type == DataType.Function)
+            if (func != null
+                && func.Type == DataType.Function)
             {
                 func.Call();
             }

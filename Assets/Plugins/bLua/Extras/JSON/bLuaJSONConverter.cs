@@ -1,14 +1,11 @@
-using System.Collections;
-using System.Collections.Generic;
 using System.IO;
 using System.Text;
-using UnityEngine;
 
 namespace bLua.JSON
 {
     public static class bLuaJSONConverter
 	{
-		enum TokenType
+		private enum TokenType
 		{
 			Boolean,
 			String,
@@ -24,7 +21,7 @@ namespace bLua.JSON
 			None
 		}
 
-		struct Token
+		private struct Token
 		{
 			public TokenType type;
 			public string value;
@@ -42,15 +39,15 @@ namespace bLua.JSON
 			}
 		}
 
-		const string nullString = "null";
-		const string boolTrue = "true";
-		const string boolFalse = "false";
-		const char beginTable = '{';
-		const char endTable = '}';
-		const char beginArray = '[';
-		const char endArray = ']';
-		const char valueSeparator = ',';
-		const char keySeparator = ':';
+		private const string nullString = "null";
+		private const string boolTrue = "true";
+		private const string boolFalse = "false";
+		private const char beginTable = '{';
+		private const char endTable = '}';
+		private const char beginArray = '[';
+		private const char endArray = ']';
+		private const char valueSeparator = ',';
+		private const char keySeparator = ':';
 
 
 		public static string BLuaTableToJSON(bLuaValue _value)
@@ -102,7 +99,8 @@ namespace bLua.JSON
         }
 
 		#region bLuaValue to JSON
-		static void BLuaValueToJSON(StringBuilder _sb, bLuaValue _value)
+
+		private static void BLuaValueToJSON(StringBuilder _sb, bLuaValue _value)
 		{
 			if (_value.IsTable())
 			{
@@ -128,7 +126,7 @@ namespace bLua.JSON
 			}
 		}
 
-		static void BLuaTableToJSON(StringBuilder _sb, bLuaValue _table)
+		private static void BLuaTableToJSON(StringBuilder _sb, bLuaValue _table)
 		{
 			if (_table.Length > 0)
 			{
@@ -195,7 +193,7 @@ namespace bLua.JSON
 
 		#region JSON to bLuaValue
         /// <summary> This is called when the StringReader reads a BeginTable token, and will fill a new table with all of the containing values. </summary>
-        static bLuaValue JSONToBLuaTable(bLuaInstance _instance, StringReader _sr, bool _isArray = false)
+        private static bLuaValue JSONToBLuaTable(bLuaInstance _instance, StringReader _sr, bool _isArray = false)
 		{
 			bLuaValue table = bLuaValue.CreateTable(_instance);
 
@@ -293,22 +291,22 @@ namespace bLua.JSON
 			return table;
 		}
 
-		static bool TokenToBool(Token _token)
+		private static bool TokenToBool(Token _token)
         {
 			return _token.value == boolTrue;
 		}
 
-		static string TokenToString(Token _token)
+		private static string TokenToString(Token _token)
 		{
 			return JSONToString(_token.value);
 		}
 
-		static double TokenToNumber(Token _token)
+		private static double TokenToNumber(Token _token)
         {
 			return double.Parse(_token.value);
 		}
 
-		static Token GetNextToken(StringReader _sr)
+		private static Token GetNextToken(StringReader _sr)
         {
 			int i = _sr.Peek();
 			if (i == -1)
@@ -425,13 +423,13 @@ namespace bLua.JSON
 			return new Token(TokenType.None);
         }
 
-		static bool IsJSONNumber(this char _c)
+		private static bool IsJSONNumber(this char _c)
         {
 			return char.IsDigit(_c) || _c == '.';
         }
 		#endregion // JSON to bLuaValue
 
-		static string StringToJSON(string _string)
+		private static string StringToJSON(string _string)
 		{
 			_string = _string.Replace("\b", @"\b");
 			_string = _string.Replace("\f", @"\f");
@@ -444,7 +442,7 @@ namespace bLua.JSON
 			return "\"" + _string + "\"";
 		}
 
-		static string JSONToString(string _json)
+		private static string JSONToString(string _json)
 		{
 			if (string.IsNullOrEmpty(_json))
             {
@@ -462,7 +460,7 @@ namespace bLua.JSON
 			return _json;
 		}
 
-		static bool IsCompatible(bLuaValue _value)
+		private static bool IsCompatible(bLuaValue _value)
 		{
 			return _value.IsNil()
 				|| _value.Type == DataType.Boolean

@@ -133,7 +133,7 @@ namespace bLua
                     }
 
                     bLuaValue arrayTable = bLuaValue.CreateTable(_instance);
-                    foreach (object o in (_result as object[]))
+                    foreach (object o in (object[])_result)
                     {
                         arrayTable.Append(o);
                     }
@@ -148,7 +148,7 @@ namespace bLua
                     }
 
                     bLuaValue listTable = bLuaValue.CreateTable(_instance);
-                    foreach (object o in _result as IEnumerable)
+                    foreach (object o in (IEnumerable)_result)
                     {
                         listTable.Append(o);
                     }
@@ -163,9 +163,9 @@ namespace bLua
                     }
 
                     bLuaValue dictionaryTable = bLuaValue.CreateTable(_instance);
-                    foreach (object key in (_result as IDictionary).Keys)
+                    foreach (object key in ((IDictionary)_result).Keys)
                     {
-                        dictionaryTable.Set(key, (_result as IDictionary)[key]);
+                        dictionaryTable.Set(key, ((IDictionary)_result)[key]);
                     }
 
                     Lua.PushOntoStack(_instance, dictionaryTable);
@@ -201,7 +201,7 @@ namespace bLua
         }
 
 #if UNITY_EDITOR
-        struct DebugEntry
+        private struct DebugEntry
         {
             public int count;
             public string typeName;
@@ -218,12 +218,7 @@ namespace bLua
                     continue;
                 }
                 string typeName = p.GetType().Name;
-                int count = 0;
-                if (types.ContainsKey(typeName))
-                {
-                    count = types[typeName];
-                }
-
+                types.TryGetValue(typeName, out int count);
                 ++count;
                 types[typeName] = count;
             }
@@ -237,10 +232,7 @@ namespace bLua
                 });
             }
 
-            entries.Sort((a,b) =>
-            {
-                return a.count.CompareTo(b.count);
-            });
+            entries.Sort((a,b) => a.count.CompareTo(b.count));
 
             foreach (DebugEntry entry in entries)
             {
@@ -257,8 +249,7 @@ namespace bLua
                 return;
             }
 
-            int typeIndex;
-            if (_instance.typenameToEntryIndex.TryGetValue(_object.GetType().Name, out typeIndex) == false)
+            if (_instance.typenameToEntryIndex.TryGetValue(_object.GetType().Name, out int typeIndex) == false)
             {
                 Debug.LogError($"Type {_object.GetType().Name} is not marked as a user data. Register it with `bLuaUserData.Register`, `bLuaInstance.RegisterUserData`, or add the [bLuaUserData] attribute and have your bLuaInstance auto register all bLuaUserData.");
                 Lua.PushNil(_instance);
@@ -317,7 +308,7 @@ namespace bLua
             return _instance.typenameToEntryIndex.ContainsKey(_type.Name);
         }
 
-        static bool AreAllBaseTypesRegistered(bLuaInstance _instance, Type _type)
+        private static bool AreAllBaseTypesRegistered(bLuaInstance _instance, Type _type)
         {
             if (!_type.IsClass)
             {
@@ -345,7 +336,7 @@ namespace bLua
             }
         }
 
-        static void RegisterAssemblyBLuaUserData(bLuaInstance _instance, Assembly _assembly)
+        private static void RegisterAssemblyBLuaUserData(bLuaInstance _instance, Assembly _assembly)
         {
             foreach (TypeInfo t in _assembly.DefinedTypes)
             {
@@ -375,9 +366,9 @@ namespace bLua
                     Register(_instance, _type.BaseType);
                 }
 
-                if (_instance.typenameToEntryIndex.ContainsKey(_type.BaseType.Name))
+                if (_instance.typenameToEntryIndex.TryGetValue(_type.BaseType.Name, out int value))
                 {
-                    baseProperties = new Dictionary<string, UserDataRegistryEntry.PropertyEntry>(_instance.registeredEntries[_instance.typenameToEntryIndex[_type.BaseType.Name]].properties);
+                    baseProperties = new Dictionary<string, UserDataRegistryEntry.PropertyEntry>(_instance.registeredEntries[value].properties);
                 }
             }
 
@@ -386,33 +377,33 @@ namespace bLua
                 && attribute.reliantUserData != null
                 && attribute.reliantUserData.Length > 0)
             {
-                for (int i = 0; i < attribute.reliantUserData.Length; i++)
+                foreach (Type t in attribute.reliantUserData)
                 {
-                    Register(_instance, attribute.reliantUserData[i]);
+                    Register(_instance, t);
                 }
             }
 
             int typeIndex = _instance.registeredEntries.Count;
 
-            UserDataRegistryEntry entry = new UserDataRegistryEntry()
+            UserDataRegistryEntry entry = new UserDataRegistryEntry
             {
                 name = _type.Name,
                 properties = baseProperties,
+                metatable = Lua.NewMetaTable(_instance, _type.Name)
             };
-            entry.metatable = Lua.NewMetaTable(_instance, _type.Name);
             entry.metatable.Set("__index",    bLuaValue.CreateClosure(_instance, bLuaMetamethods.Metamethod_Index,    bLuaValue.CreateNumber(_instance, typeIndex)));
             entry.metatable.Set("__newindex", bLuaValue.CreateClosure(_instance, bLuaMetamethods.Metamethod_NewIndex, bLuaValue.CreateNumber(_instance, typeIndex)));
             entry.metatable.Set("__gc",       bLuaValue.CreateClosure(_instance, bLuaMetamethods.MetaMethod_GC,       bLuaValue.CreateNumber(_instance, typeIndex)));
-            for (int i = 0; i < bLuaMetamethods.metamethodCollection.Length; i++)
+            foreach (string[] metamethod in bLuaMetamethods.metamethodCollection)
             {
-                if (_type.GetMethods().FirstOrDefault((mi) => mi.Name == bLuaMetamethods.metamethodCollection[i][0]) != null)
+                if (_type.GetMethods().FirstOrDefault((mi) => mi.Name == metamethod[0]) != null)
                 {
-                    entry.metatable.Set(bLuaMetamethods.metamethodCollection[i][1],
+                    entry.metatable.Set(metamethod[1],
                         bLuaValue.CreateClosure(_instance,
                             bLuaMetamethods.Metamethod_Operator,
                             bLuaValue.CreateNumber(_instance, typeIndex),
-                            bLuaValue.CreateString(_instance, bLuaMetamethods.metamethodCollection[i][0]),   // method name string
-                            bLuaValue.CreateString(_instance, bLuaMetamethods.metamethodCollection[i][2]))); // error string
+                            bLuaValue.CreateString(_instance, metamethod[0]),   // method name string
+                            bLuaValue.CreateString(_instance, metamethod[2]))); // error string
                 }
             }
             if (_type.GetMethod("ToString") != null)
@@ -482,8 +473,7 @@ namespace bLua
 
                 if (isExtensionMethod)
                 {
-                    int extensionTypeIndex;
-                    if (_instance.typenameToEntryIndex.TryGetValue(methodParams[0].ParameterType.Name, out extensionTypeIndex) == false)
+                    if (_instance.typenameToEntryIndex.TryGetValue(methodParams[0].ParameterType.Name, out int extensionTypeIndex) == false)
                     {
                         Debug.LogError($"Tried to register extension method ({methodInfo.Name}) but the type it extends ({methodParams[0].ParameterType.Name}) isn't registered.");
                         continue;
@@ -594,19 +584,19 @@ namespace bLua
             }
 
             MethodInfo[] methods = _object.GetType().GetMethods(BindingFlags.Public | BindingFlags.DeclaredOnly | BindingFlags.Static);
-            for (int i = 0; i < methods.Length; i++)
+            foreach (MethodInfo method in methods)
             {
-                GlobalMethodCallInfo info = CreateGlobalMethodCallInfo(_instance, methods[i], _object);
+                GlobalMethodCallInfo info = CreateGlobalMethodCallInfo(_instance, method, _object);
                 if (info == null)
                 {
                     continue;
                 }
 
-                _environment.Set(methods[i].Name, info);
+                _environment.Set(method.Name, info);
             }
         }
 
-        static GlobalMethodCallInfo CreateGlobalMethodCallInfo(bLuaInstance _instance, MethodInfo _methodInfo, object _object)
+        private static GlobalMethodCallInfo CreateGlobalMethodCallInfo(bLuaInstance _instance, MethodInfo _methodInfo, object _object)
         {
             Attribute hiddenAttr = _methodInfo.GetCustomAttribute(typeof(bLuaHiddenAttribute));
             if (hiddenAttr != null)
@@ -686,7 +676,7 @@ namespace bLua
                     return Lua.PopStackIntoValue(_instance);
                 case MethodCallInfo.ParamType.UserDataClass:
                     object userDataClassObject = Lua.PopStackIntoValue(_instance).Object;
-                    return userDataClassObject != null ? Convert.ChangeType(userDataClassObject, userDataClassObject.GetType()) : userDataClassObject;
+                    return userDataClassObject != null ? Convert.ChangeType(userDataClassObject, userDataClassObject.GetType()) : null;
                 default:
                     Lua.PopStack(_instance);
                     return null;

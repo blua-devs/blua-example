@@ -1,7 +1,4 @@
-using System.Collections;
-using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using UnityEngine;
 
 namespace bLua.NativeLua
 {
@@ -23,12 +20,9 @@ namespace bLua.NativeLua
         [DllImport(Lua.LUA_DLL)]
         public static extern void luaL_setmetatable(System.IntPtr state, string tname);
 
-        //int lua_pushthread (lua_State* L);
-
         [DllImport(Lua.LUA_DLL)]
         public static extern int luaL_loadbufferx(System.IntPtr state, string buff, ulong sz, string name, string mode);
 
-        //references
         [DllImport(Lua.LUA_DLL)]
         public static extern int luaL_ref(System.IntPtr state, int t);
 

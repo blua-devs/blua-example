@@ -1,9 +1,6 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
 using System.Diagnostics;
-using UnityEditor;
 using UnityEngine.Events;
 using System;
 
@@ -79,9 +76,9 @@ public partial class BenchmarkUserData
     public virtual int AddValuesVariableArgs(int a, params object[] b)
     {
         int c = a;
-        for (int i = 0; i < b.Length; i++)
+        foreach (object o in b)
         {
-            c += (int)(double)b[i];
+            c += (int)(double)o;
         }
         return c;
     }
@@ -122,7 +119,7 @@ public partial class BenchmarkUserData
 public class Benchmark : MonoBehaviour
 {
     /// <summary> This event is called whenever the benchmarks have been run. </summary>
-    [HideInInspector] public UnityEvent<Benchmark, BenchmarkResult[]> OnBenchmarksRan = new UnityEvent<Benchmark, BenchmarkResult[]>();
+    [HideInInspector] public UnityEvent<Benchmark, BenchmarkResult[]> OnBenchmarksRan = new();
 
     /// <summary> The identifier for the benchmark. This will be printed with the benchmark resutls so you can keep track of which
     /// benchmark ran the test. </summary>
@@ -177,19 +174,19 @@ public class Benchmark : MonoBehaviour
         end
         ud:DestroyGameObject()";
 
-    /// <summary> All of the scripts to test for benchmarking. </summary>
+    /// <summary> All the scripts to test for benchmarking. </summary>
     protected virtual Tuple<string /* Test name */, string /* Lua */>[] benchmarkScripts => new Tuple<string, string>[]
     {
-        new Tuple<string, string>("NoOperation", script_NoOperation),
-        new Tuple<string, string>("BasicAddition", script_BasicAddition),
-        new Tuple<string, string>("LotsOfArgsAddition", script_LotsOfArgsAddition),
-        new Tuple<string, string>("MakeBigTable", script_MakeBigTable),
-        new Tuple<string, string>("ArgsToUserData", script_ArgsToUserData),
-        new Tuple<string, string>("AffectGameObject", script_AffectGameObject)
+        new("NoOperation", script_NoOperation),
+        new("BasicAddition", script_BasicAddition),
+        new("LotsOfArgsAddition", script_LotsOfArgsAddition),
+        new("MakeBigTable", script_MakeBigTable),
+        new("ArgsToUserData", script_ArgsToUserData),
+        new("AffectGameObject", script_AffectGameObject)
     };
 
 
-    void Awake()
+    private void Awake()
     {
         Init();
     }
@@ -208,26 +205,27 @@ public class Benchmark : MonoBehaviour
     }
 
 
-    /// <summary> Runs all of the benchmark tests. </summary>
+    /// <summary> Runs all the benchmark tests. </summary>
     public void RunAllBenchmarks()
     {
-        // Gather the results from all of the benchmark tests
+        // Gather the results from all the benchmark tests
         BenchmarkResult[] results = new BenchmarkResult[benchmarkScripts.Length];
         for (int i = 0; i < benchmarkScripts.Length; i++)
         {
             object script = GetScript();
             script = RegisterUserData(script);
+            int cachedIndex = i;
             results[i] = TimeBenchmark(benchmarkScripts[i].Item1,
                 () => {
-                    RunBenchmark(script, benchmarkScripts[i].Item2);
+                    RunBenchmark(script, benchmarkScripts[cachedIndex].Item2);
                 });
         }
         Cleanup();
 
         // Print the results to the console/log
-        for (int i = 0; i < results.Length; i++)
+        foreach (BenchmarkResult result in results)
         {
-            Debug.Log(FormatResult(results[i]));
+            Debug.Log(FormatResult(result));
         }
 
         OnBenchmarksRan.Invoke(this, results);
@@ -238,7 +236,7 @@ public class Benchmark : MonoBehaviour
     /// <returns>The Lua-capable script object.</returns>
     protected virtual object GetScript()
     {
-        throw new System.NotImplementedException();
+        throw new NotImplementedException();
     }
 
     /// <summary> This needs to be overridden to register BenchmarkUserData to the passed script object so 
@@ -246,7 +244,7 @@ public class Benchmark : MonoBehaviour
     /// <param name="script">The script object to register your custom user data to.</param>
     protected virtual object RegisterUserData(object script)
     {
-        throw new System.NotImplementedException();
+        throw new NotImplementedException();
     }
 
     /// <summary> This needs to be overridden to simply run the Lua code that is passed into the function using whatever Lua interpreter 
@@ -255,19 +253,18 @@ public class Benchmark : MonoBehaviour
     /// <param name="lua">The Lua code to be tested.</param>
     protected virtual void RunBenchmark(object script, string lua)
     {
-        throw new System.NotImplementedException();
+        throw new NotImplementedException();
     }
 
     /// <summary> This *can be* overridden to clean up anything that should be cleaned up after all benchmarks are run. </summary>
     protected virtual void Cleanup()
     {
-        //
     }
 
     /// <summary> Runs a benchmark test and prints the results to the console. </summary>
-    /// <param name="name"> The name for the benchmark test. This will be printed with the benchmark results. </param>
+    /// <param name="benchmarkName"> The name for the benchmark test. This will be printed with the benchmark results. </param>
     /// <param name="action"> An action containing the test you want to run. </param>
-    protected BenchmarkResult TimeBenchmark(string name, System.Action action)
+    protected BenchmarkResult TimeBenchmark(string benchmarkName, Action action)
     {
         action();
 
@@ -288,11 +285,13 @@ public class Benchmark : MonoBehaviour
             elapsed = iterationTimer.ElapsedMilliseconds;
         }
 
-        BenchmarkResult result = new BenchmarkResult();
-        result.testName = name;
-        result.interpreter = identifier;
-        result.iterations = currentIterations;
-        result.timeElapsed = elapsed;
+        BenchmarkResult result = new BenchmarkResult
+        {
+            testName = benchmarkName,
+            interpreter = identifier,
+            iterations = currentIterations,
+            timeElapsed = elapsed
+        };
 
         return result;
     }

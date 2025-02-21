@@ -1,4 +1,3 @@
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEditor;
@@ -19,7 +18,7 @@ public class BenchmarkPlayHelperEditor : Editor
 public class BenchmarkPlayHelper : MonoBehaviour
 {
     Benchmark[] benchmarks;
-    Dictionary<Benchmark, BenchmarkResult[]> resultsByBenchmark = new Dictionary<Benchmark, BenchmarkResult[]>();
+    Dictionary<Benchmark, BenchmarkResult[]> resultsByBenchmark = new();
 
     const float panelWidth = 600f;
     const float panelHeightMin = 30f;
@@ -33,11 +32,11 @@ public class BenchmarkPlayHelper : MonoBehaviour
 
     private void Start()
     {
-        benchmarks = FindObjectsOfType<Benchmark>();
+        benchmarks = FindObjectsByType<Benchmark>(FindObjectsSortMode.None);
 
-        for (int i = 0; i < benchmarks.Length; i++)
+        foreach (Benchmark benchmark in benchmarks)
         {
-            benchmarks[i].OnBenchmarksRan.AddListener(OnBenchmarksRan);
+            benchmark.OnBenchmarksRan.AddListener(OnBenchmarksRan);
         }
     }
 
@@ -69,11 +68,11 @@ public class BenchmarkPlayHelper : MonoBehaviour
             for (int i = 0; i < resultsByBenchmark.Count; i++)
             {
                 KeyValuePair<Benchmark, BenchmarkResult[]> kvp = resultsByBenchmark.ElementAt(i);
-                for (int j = 0; j < kvp.Value.Length; j++)
+                foreach (BenchmarkResult benchmarkResult in kvp.Value)
                 {
                     GUI.Label(
                         new Rect(panelPadding + padding, (panelHeightMin + padding) + (benchmarks.Length * (buttonHeight + padding)) + (rowsDrawn * (labelHeight + padding)) + ((i * (padding * 2f)) + (padding * 2f)), labelWidth - ((panelPadding + padding) * 2f), labelHeight),
-                        Benchmark.FormatResult(kvp.Value[j]));
+                        Benchmark.FormatResult(benchmarkResult));
                     rowsDrawn++;
                 }
             }
@@ -83,13 +82,6 @@ public class BenchmarkPlayHelper : MonoBehaviour
 
     private void OnBenchmarksRan(Benchmark benchmark, BenchmarkResult[] results)
     {
-        if (resultsByBenchmark.ContainsKey(benchmark))
-        {
-            resultsByBenchmark[benchmark] = results;
-        }
-        else
-        {
-            resultsByBenchmark.Add(benchmark, results);
-        }
+        resultsByBenchmark[benchmark] = results;
     }
 }

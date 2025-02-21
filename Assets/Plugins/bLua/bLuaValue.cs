@@ -1,10 +1,8 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Assertions;
 using bLua.NativeLua;
-using bLua.Internal;
 
 namespace bLua
 {
@@ -17,10 +15,10 @@ namespace bLua
 
         public DataType dataType = DataType.Unknown;
 
-        bLuaInstance instance;
+        private bLuaInstance instance;
 
 
-        static public bLuaValue Nil = new bLuaValue()
+        public static bLuaValue Nil = new()
         {
             dataType = DataType.Nil
         };
@@ -166,7 +164,7 @@ namespace bLua
         public void Dispose()
         {
             Dispose(true);
-            System.GC.SuppressFinalize(this);
+            GC.SuppressFinalize(this);
         }
 
         protected virtual void Dispose(bool _deterministic)
@@ -333,8 +331,8 @@ namespace bLua
 
         public bool? CastToOptionalBool()
         {
-            DataType dataType = (DataType)Lua.PushStack(instance, this);
-            switch (dataType)
+            DataType pushedDataType = (DataType)Lua.PushStack(instance, this);
+            switch (pushedDataType)
             {
                 case DataType.Boolean:
                     return Lua.PopBool(instance);
@@ -351,8 +349,8 @@ namespace bLua
 
         public bool CastToBool(bool _defaultValue = false)
         {
-            DataType dataType = (DataType)Lua.PushStack(instance, this);
-            switch (dataType)
+            DataType pushedDataType = (DataType)Lua.PushStack(instance, this);
+            switch (pushedDataType)
             {
                 case DataType.Boolean:
                     return Lua.PopBool(instance);
@@ -379,9 +377,8 @@ namespace bLua
 
         public string CastToString(string _defaultValue = "")
         {
-            DataType dataType = (DataType)Lua.PushStack(instance, this);
-
-            switch (dataType)
+            DataType pushedDataType = (DataType)Lua.PushStack(instance, this);
+            switch (pushedDataType)
             {
                 case DataType.String:
                     return Lua.PopString(instance);
@@ -404,16 +401,15 @@ namespace bLua
 
         public float? CastToOptionalFloat()
         {
-            DataType dataType = (DataType)Lua.PushStack(instance, this);
-            switch (dataType)
+            DataType pushedDataType = (DataType)Lua.PushStack(instance, this);
+            switch (pushedDataType)
             {
                 case DataType.Number:
                     return (float)Lua.PopNumber(instance);
                 case DataType.String:
                     {
-                        float f;
                         string s = Lua.PopString(instance);
-                        if (float.TryParse(s, out f))
+                        if (float.TryParse(s, out float f))
                         {
                             return f;
                         }
@@ -426,22 +422,19 @@ namespace bLua
                     Lua.PopStack(instance);
                     return null;
             }
-
         }
 
         public float CastToFloat(float _defaultValue = 0.0f)
         {
-            DataType dataType = (DataType)Lua.PushStack(instance, this);
-
-            switch (dataType)
+            DataType pushedDataType = (DataType)Lua.PushStack(instance, this);
+            switch (pushedDataType)
             {
                 case DataType.Number:
                     return (float)Lua.PopNumber(instance);
                 case DataType.String:
                     {
-                        float f;
                         string s = Lua.PopString(instance);
-                        if (float.TryParse(s, out f))
+                        if (float.TryParse(s, out float f))
                         {
                             return f;
                         }
@@ -458,17 +451,15 @@ namespace bLua
 
         public int CastToInt(int _defaultValue = 0)
         {
-            DataType dataType = (DataType)Lua.PushStack(instance, this);
-
-            switch (dataType)
+            DataType pushedDataType = (DataType)Lua.PushStack(instance, this);
+            switch (pushedDataType)
             {
                 case DataType.Number:
                     return (int)Lua.PopNumber(instance);
                 case DataType.String:
                     {
-                        int f;
                         string s = Lua.PopString(instance);
-                        if (int.TryParse(s, out f))
+                        if (int.TryParse(s, out int f))
                         {
                             return f;
                         }
@@ -485,17 +476,15 @@ namespace bLua
 
         public double? CastToNumber()
         {
-            DataType dataType = (DataType)Lua.PushStack(instance, this);
-
-            switch (dataType)
+            DataType pushedDataType = (DataType)Lua.PushStack(instance, this);
+            switch (pushedDataType)
             {
                 case DataType.Number:
                     return Lua.PopNumber(instance);
                 case DataType.String:
                     {
-                        double f;
                         string s = Lua.PopString(instance);
-                        if (double.TryParse(s, out f))
+                        if (double.TryParse(s, out double f))
                         {
                             return f;
                         }
@@ -504,9 +493,6 @@ namespace bLua
                     }
                 case DataType.Boolean:
                     return Lua.PopBool(instance) ? 1.0 : 0.0;
-                case DataType.Nil:
-                    Lua.PopStack(instance);
-                    return null;
                 default:
                     Lua.PopStack(instance);
                     return null;
@@ -541,7 +527,13 @@ namespace bLua
             }
             else if (_type == typeof(int))
             {
-                return (int)CastToNumber();
+                double? number = CastToNumber();
+                if (number.HasValue)
+                {
+                    return (int)number.Value;
+                }
+
+                return 0;
             }
             else if (_type == typeof(bool))
             {
@@ -589,10 +581,7 @@ namespace bLua
 
         public void CallCoroutine(params object[] _args)
         {
-            if (instance != null)
-            {
-                instance.CallCoroutine(this, _args);
-            }
+            instance?.CallCoroutine(this, _args);
         }
 
         public int Length
@@ -799,8 +788,7 @@ namespace bLua
 
         public override bool Equals(object a)
         {
-            bLuaValue other = a as bLuaValue;
-            if (other == null)
+            if (a is not bLuaValue other)
             {
                 return false;
             }
@@ -811,8 +799,8 @@ namespace bLua
                 return true;
             }
 
-            if ((this.instance != other.instance)
-                || this.instance == null
+            if ((instance != other.instance)
+                || instance == null
                 || other.instance == null)
             {
                 // unable to do a raw equality check via lua if the values exist in different lua instances
@@ -836,9 +824,14 @@ namespace bLua
             return res != 0;
         }
 
+        protected bool Equals(bLuaValue other)
+        {
+            return Equals(this, other);
+        }
+
         public override int GetHashCode()
         {
-            return base.GetHashCode();
+            return HashCode.Combine(referenceID, instance);
         }
     }
 } // bLua namespace

@@ -1,7 +1,4 @@
-using System.Collections;
-using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using UnityEngine;
 
 namespace bLua.NativeLua
 {
@@ -17,18 +14,18 @@ namespace bLua.NativeLua
         [DllImport(Lua.LUA_DLL)]
         public static extern void lua_seti(System.IntPtr state, int stack_index, int table_index);
 
-        //returns the length of the string or table.
+        /// <returns> Length of the string or table </returns>
         [DllImport(Lua.LUA_DLL)]
         public static extern uint lua_rawlen(System.IntPtr state, int stack_index);
 
         [DllImport(Lua.LUA_DLL)]
         public static extern int lua_next(System.IntPtr state, int idx);
 
-        //Does the equivalent to t[k] = v, where t is the value at the given index, v is the value on the top of the stack, and k is the value just below the top.
+        /// <summary> Does the equivalent to t[k] = v, where t is the value at the given index, v is the value on the top of the stack, and k is the value just below the top. </summary>
         [DllImport(Lua.LUA_DLL)]
         public static extern void lua_settable(System.IntPtr state, int idx);
 
-        //Pushes onto the stack the value t[k], where t is the value at the given index and k is the value on the top of the stack.
+        /// <summary> Pushes onto the stack the value t[k], where t is the value at the given index and k is the value on the top of the stack. </summary>
         [DllImport(Lua.LUA_DLL)]
         public static extern int lua_gettable(System.IntPtr state, int idx);
 
@@ -44,14 +41,13 @@ namespace bLua.NativeLua
         [DllImport(Lua.LUA_DLL)]
         public static extern void lua_setglobal(System.IntPtr state, string key);
 
-        // returns a char*
+        /// <returns> char* </returns>
         [DllImport(Lua.LUA_DLL)]
         public static extern System.IntPtr lua_typename(System.IntPtr state, int idx);
 
         [DllImport(Lua.LUA_DLL)]
         public static extern System.IntPtr lua_close(System.IntPtr state);
 
-        //push values onto stack.
         [DllImport(Lua.LUA_DLL)]
         public static extern void lua_pushnil(System.IntPtr state);
 
@@ -63,8 +59,7 @@ namespace bLua.NativeLua
 
         public static void lua_pushint64(System.IntPtr state, long n)
         {
-            int r;
-            if (!int.TryParse(n.ToString(), out r))
+            if (!int.TryParse(n.ToString(), out int r))
             {
                 r = int.MaxValue;
             }
@@ -105,11 +100,9 @@ namespace bLua.NativeLua
         [DllImport(Lua.LUA_DLL)]
         public static extern void lua_xmove(System.IntPtr state, System.IntPtr to, int n);
 
-        //find type of value on stack.
         [DllImport(Lua.LUA_DLL)]
         public static extern int lua_type(System.IntPtr state, int idx);
 
-        //inspect values on stack.
         [DllImport(Lua.LUA_DLL)]
         public static extern int lua_toboolean(System.IntPtr state, int idx);
 
@@ -125,7 +118,6 @@ namespace bLua.NativeLua
         [DllImport(Lua.LUA_DLL)]
         public static extern System.IntPtr lua_tothread(System.IntPtr state, int n);
 
-        //void lua_pushcclosure (lua_State* L, lua_CFunction fn, int n);
         [DllImport(Lua.LUA_DLL)]
         public static extern void lua_pushcclosure(System.IntPtr state, System.IntPtr fn, int n);
 
@@ -138,7 +130,7 @@ namespace bLua.NativeLua
         [DllImport(Lua.LUA_DLL)]
         public static extern int lua_setiuservalue(System.IntPtr state, int idx, int n);
 
-        // returns a char*
+        /// <returns> char* </returns>
         [DllImport(Lua.LUA_DLL)]
         public static extern System.IntPtr lua_setupvalue(System.IntPtr state, int funcindex, int n);
 

@@ -1,4 +1,3 @@
-using System.Collections;
 using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
@@ -15,7 +14,7 @@ public class bLuaBenchmarkEditor : Editor
         if (GUILayout.Button("Run Benchmark"))
         {
             bLuaBenchmark benchmark = GameObject.Find("Benchmark")?.GetComponent<bLuaBenchmark>();
-            benchmark.RunAllBenchmarks();
+            benchmark?.RunAllBenchmarks();
         }
     }
 }
@@ -29,7 +28,7 @@ public partial class BenchmarkUserData
 
 public class bLuaBenchmark : Benchmark
 {
-    List<bLuaInstance> instances = new List<bLuaInstance>();
+    private List<bLuaInstance> instances = new();
 
 
     protected override void Init()
@@ -43,7 +42,8 @@ public class bLuaBenchmark : Benchmark
         bLuaInstance instance = new bLuaInstance(new bLuaSettings()
         {
             features = bLuaSettings.SANDBOX_SAFE,
-            autoRegisterTypes = bLuaSettings.AutoRegisterTypes.None
+            autoRegisterTypes = bLuaSettings.AutoRegisterTypes.None,
+            internalVerbosity = bLuaSettings.InternalErrorVerbosity.Minimal
         });
         instances.Add(instance);
 
@@ -63,8 +63,7 @@ public class bLuaBenchmark : Benchmark
 
     protected override void RunBenchmark(object script, string lua)
     {
-        bLuaInstance instance = script as bLuaInstance;
-        if (instance != null)
+        if (script is bLuaInstance instance)
         {
             instance.DoString(lua);
         }

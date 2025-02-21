@@ -1,4 +1,3 @@
-using System.Collections;
 using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
@@ -6,7 +5,7 @@ using UnityEngine.SceneManagement;
 
 public class SceneNavigator : MonoBehaviour
 {
-    List<string> allSceneNames = new List<string>();
+    List<string> allSceneNames = new();
     string currentSceneName = "";
 
     float sceneButtonHeight = 20f;
@@ -19,14 +18,14 @@ public class SceneNavigator : MonoBehaviour
     {
         if (instance != null)
         {
-            MonoBehaviour.Destroy(this.gameObject);
+            Destroy(gameObject);
         }
         else
         {
             instance = this;
-            DontDestroyOnLoad(this.gameObject);
+            DontDestroyOnLoad(gameObject);
 
-            SceneManager.activeSceneChanged += (Scene a, Scene b) => {
+            SceneManager.activeSceneChanged += (a, b) => {
                 currentSceneName = EditorBuildSettings.scenes[SceneManager.GetActiveScene().buildIndex].path.Split(".unity")[0];
             };
         }
@@ -34,9 +33,9 @@ public class SceneNavigator : MonoBehaviour
 
     private void Start()
     {
-        for (int i = 0; i < EditorBuildSettings.scenes.Length; i++)
+        foreach (EditorBuildSettingsScene scene in EditorBuildSettings.scenes)
         {
-            allSceneNames.Add(EditorBuildSettings.scenes[i].path.Split(".unity")[0]);
+            allSceneNames.Add(scene.path.Split(".unity")[0]);
         }
     }
 
@@ -57,7 +56,7 @@ public class SceneNavigator : MonoBehaviour
             {
                 if (GUI.Button(sceneButtonRect, sceneName))
                 {
-                    SceneManager.LoadScene(sceneName + ".unity");
+                    SceneManager.LoadScene(sceneName + ".unity", LoadSceneMode.Single);
                 }
             }
         }

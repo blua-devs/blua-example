@@ -1,12 +1,11 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using bLua;
 
 public class Statistics : MonoBehaviour
 {
-    class StatisticsRow
+    private class StatisticsRow
     {
         public Func<string> GetContent;
         public StatisticsRow(Func<string> _contentFunc)
@@ -15,13 +14,13 @@ public class Statistics : MonoBehaviour
         }
     }
 
-    float boxWidth = 200f;
-    float rowHeight = 20f;
-    float spaceBetweenRows = 2f;
+    private float boxWidth = 200f;
+    private float rowHeight = 20f;
+    private float spaceBetweenRows = 2f;
 
-    List<StatisticsRow> rows = new List<StatisticsRow>()
+    private List<StatisticsRow> rows = new()
     {
-        new StatisticsRow(() => "Instance Count: " + bLuaInstance.GetInstanceCount().ToString())
+        new StatisticsRow(() => "Instance Count: " + bLuaInstance.GetInstanceCount())
     };
 
     public static Statistics instance;
@@ -31,12 +30,12 @@ public class Statistics : MonoBehaviour
     {
         if (instance != null)
         {
-            MonoBehaviour.Destroy(this.gameObject);
+            Destroy(gameObject);
         }
         else
         {
             instance = this;
-            DontDestroyOnLoad(this.gameObject);
+            DontDestroyOnLoad(gameObject);
         }
     }
 

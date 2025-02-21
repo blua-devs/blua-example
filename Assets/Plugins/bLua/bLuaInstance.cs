@@ -1,9 +1,6 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
-using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Events;
@@ -66,9 +63,10 @@ namespace bLua
         ThreadMacros = 1024,
         /// <summary> Includes `print(s)` function(s) as globals. </summary>
         HelperMacros = 2048,
+        /// <remarks> WARNING! This feature is EXPERIMENTAL and may cause errors when accessing userdata methods via '.' or ':'. </remarks>
         /// <remarks> WARNING! This may affect performance based on how often your Lua runs userdata methods. </remarks>
         /// <summary> Makes the syntax sugar `:` optional when calling instance methods on userdata. The symbols `.` and `:` become interchangeable in all cases
-        /// where Lua is calling a userdata method. </summary>
+        /// where Lua is calling userdata methods. </summary>
         ImplicitSyntaxSugar = 4096,
         /// <remarks> WARNING! If NOT enabled, you may experience leftover Lua userdata (and bLuaValue objects in C#) that NEVER get garbage collected. It is
         /// highly recommended to keep this setting on as a lightweight backup to prevent potentially consuming all available memory. </remarks>
@@ -83,7 +81,7 @@ namespace bLua
         public static Features SANDBOX_NONE = Features.None;
 
         /// <remarks> WARNING! Some of these features include developer warnings, please review the remarks on individual features. </remarks>
-        /// <summary> Includes all of the features Lua and bLua have to offer. </summary>
+        /// <summary> Includes all the features Lua and bLua have to offer. </summary>
         public static Features SANDBOX_ALL = Features.BasicLibrary
             | Features.Coroutines
             | Features.Packages
@@ -98,6 +96,11 @@ namespace bLua
             | Features.HelperMacros
             | Features.ImplicitSyntaxSugar
             | Features.CSharpGarbageCollection;
+
+        /// <remarks> WARNING! Some of these features include developer warnings, please review the remarks on individual features. </remarks>
+        /// <summary> Includes all the features Lua and bLua have to offer minus experimental bLua features. </summary>
+        public static Features SANDBOX_ALL_NONEXPERIMENTAL = SANDBOX_ALL
+            & ~Features.ImplicitSyntaxSugar; // There is at least one known issue with ImplicitSyntaxSugar uncovered in the bLua example Unit Tests
 
         /// <remarks> WARNING! Some of these features include developer warnings, please review the remarks on individual features. </remarks>
         /// <summary> Includes most Lua and bLua features, specifically ones that might be used commonly in modding. </summary>
@@ -165,7 +168,7 @@ namespace bLua
             Normal = 2,
             /// <remarks> WARNING! You must have the Debug feature enabled to grant bLua access to the debug library! </remarks>
             /// <summary> (Lua + C# Traces) Shows the error message sent from the Lua library as well as the engine trace (debug.traceback) for the
-            /// exception. Additionally shows the CSharp stack trace for any exceptions inside of C# code run from Lua. </summary>
+            /// exception. Additionally, shows the CSharp stack trace for any exceptions inside C# code run from Lua. </summary>
             Verbose = 3
         }
 
@@ -175,12 +178,11 @@ namespace bLua
 
     public class bLuaInstance : IDisposable
     {
-        static Dictionary<IntPtr, bLuaInstance> instanceRegistry = new Dictionary<IntPtr, bLuaInstance>();
+        private static Dictionary<IntPtr, bLuaInstance> instanceRegistry = new();
 
         public static bLuaInstance GetInstanceByState(IntPtr _state)
         {
-            bLuaInstance instance = null;
-            instanceRegistry.TryGetValue(_state, out instance);
+            instanceRegistry.TryGetValue(_state, out bLuaInstance instance);
             return instance;
         }
 
@@ -189,27 +191,27 @@ namespace bLua
             return instanceRegistry.Count;
         }
 
-        public readonly bLuaSettings settings = new bLuaSettings();
+        public readonly bLuaSettings settings = new();
 
-        UnityEvent<string> OnPrint = new UnityEvent<string>();
+        private UnityEvent<string> OnPrint = new();
 
         /// <summary> Contains the current Lua state (https://www.lua.org/manual/5.4/manual.html#lua_newstate). </summary>
         public IntPtr state;
 
         public int stringCacheHit = 0, stringCacheMiss = 0;
         public StringCacheEntry[] stringCache = new StringCacheEntry[997];
-        Dictionary<string, bLuaValue> internedStrings = new Dictionary<string, bLuaValue>();
-        Dictionary<string, bLuaValue> lookups = new Dictionary<string, bLuaValue>();
+        private Dictionary<string, bLuaValue> internedStrings = new();
+        private Dictionary<string, bLuaValue> lookups = new();
 
-        public List<MethodCallInfo> registeredMethods = new List<MethodCallInfo>();
-        public List<PropertyCallInfo> registeredProperties = new List<PropertyCallInfo>();
-        public List<FieldCallInfo> registeredFields = new List<FieldCallInfo>();
-        public List<UserDataRegistryEntry> registeredEntries = new List<UserDataRegistryEntry>();
-        public Dictionary<string, int> typenameToEntryIndex = new Dictionary<string, int>();
+        public List<MethodCallInfo> registeredMethods = new();
+        public List<PropertyCallInfo> registeredProperties = new();
+        public List<FieldCallInfo> registeredFields = new();
+        public List<UserDataRegistryEntry> registeredEntries = new();
+        public Dictionary<string, int> typenameToEntryIndex = new();
 
         public object[] liveObjects = new object[65536];
         public object[] syntaxSugarProxies = new object[65536];
-        public List<int> liveObjectsFreeList = new List<int>();
+        public List<int> liveObjectsFreeList = new();
         public int nextLiveObject = 1;
 
         public int numLiveObjects
@@ -247,13 +249,13 @@ namespace bLua
         }
 
         #region Initialization
-        /// <summary> Whether or not bLua has been initialized. </summary>
-        bool initialized = false;
-        bool reinitializing = false;
+        /// <summary> Whether bLua has been initialized. </summary>
+        private bool initialized = false;
+        private bool reinitializing = false;
 
 
         /// <summary> Initialize Lua and handle enabling/disabled features based on the current sandbox. </summary>
-        void Init()
+        private void Init()
         {
             if (initialized)
             {
@@ -264,7 +266,7 @@ namespace bLua
             SceneManager.activeSceneChanged -= OnActiveSceneChanged; // This can be done safely
             SceneManager.activeSceneChanged += OnActiveSceneChanged;
 
-            OnPrint.AddListener((s) => Debug.Log(s));
+            OnPrint.AddListener(Debug.Log);
 
             // Create a new state for this instance
             state = LuaXLibAPI.luaL_newstate();
@@ -515,12 +517,13 @@ namespace bLua
             }
         }
 
-        void DeInit()
+        private void DeInit()
         {
             SceneManager.activeSceneChanged -= OnActiveSceneChanged;
 
             OnTick.RemoveAllListeners();
             StopTicking();
+            StopGarbageCollecting();
 
             instanceRegistry.Remove(state);
             if (state != IntPtr.Zero)
@@ -537,7 +540,7 @@ namespace bLua
             }
         }
 
-        void ReInit()
+        private void ReInit()
         {
             reinitializing = true;
             DeInit();
@@ -545,7 +548,7 @@ namespace bLua
             reinitializing = false;
         }
 
-        void OnActiveSceneChanged(Scene _previous, Scene _new)
+        private void OnActiveSceneChanged(Scene _previous, Scene _new)
         {
             if (_previous.IsValid())
             {
@@ -556,11 +559,11 @@ namespace bLua
 
         #region Tick
         /// <summary> This event is called whenever bLua ticks. Allows for bLua features (or developers) to listen for when ticking takes place. </summary>
-        public UnityEvent OnTick = new UnityEvent();
+        public UnityEvent OnTick = new();
 
-        bool ticking = false;
-        bool requestStartTicking = false;
-        bool requestStopTicking = false;
+        private bool ticking;
+        private bool requestStartTicking;
+        private bool requestStopTicking;
 
 
         public void ManualTick()
@@ -568,7 +571,7 @@ namespace bLua
             InternalTick();
         }
 
-        async void Tick()
+        private async void Tick()
         {
             // Don't have two instances of the Tick thread; if this value is already set, don't continue
             if (ticking)
@@ -580,7 +583,8 @@ namespace bLua
             requestStartTicking = false;
 
             // Only continue ticking while this value is set. This allows us to close the tick thread from outside of it when we need to
-            while (!requestStopTicking)
+            while (!requestStopTicking
+                && initialized)
             {
                 if (settings.tickBehavior != bLuaSettings.TickBehavior.TickOnlyWhenCoroutinesActive
                     || (settings.tickBehavior == bLuaSettings.TickBehavior.TickOnlyWhenCoroutinesActive && runningCoroutines > 0))
@@ -595,18 +599,16 @@ namespace bLua
             requestStopTicking = false;
 
             // If we've already re-requested to start ticking again, go ahead and handle that here as the previous Tick() call would have failed
-            if (requestStartTicking)
+            if (requestStartTicking
+                && initialized)
             {
                 StartTicking();
             }
         }
 
-        void InternalTick()
+        private void InternalTick()
         {
-            if (OnTick != null)
-            {
-                OnTick.Invoke();
-            }
+            OnTick?.Invoke();
         }
 
         public void StartTicking()
@@ -622,23 +624,24 @@ namespace bLua
         #endregion // Tick
 
         #region Coroutines
-        struct ScheduledCoroutine
+
+        private struct ScheduledCoroutine
         {
             public bLuaValue fn;
             public object[] args;
             public int debugTag;
         }
 
-        bLuaValue internalLua_callCoroutine = null;
-        bLuaValue internalLua_updateCoroutine = null;
-        bLuaValue internalLua_cancelCoroutines = null;
+        private bLuaValue internalLua_callCoroutine;
+        private bLuaValue internalLua_updateCoroutine;
+        private bLuaValue internalLua_cancelCoroutines;
 
-        List<ScheduledCoroutine> scheduledCoroutines = new List<ScheduledCoroutine>();
+        private List<ScheduledCoroutine> scheduledCoroutines = new();
 
-        int coroutineID = 0;
+        private int coroutineID;
 
 
-        void TickCoroutines()
+        private void TickCoroutines()
         {
             using (Lua.profile_luaCo.Auto())
             {
@@ -654,7 +657,7 @@ namespace bLua
             }
         }
 
-        void ScheduleCoroutine(bLuaValue _fn, params object[] _args)
+        private void ScheduleCoroutine(bLuaValue _fn, params object[] _args)
         {
             ++coroutineID;
             scheduledCoroutines.Add(new ScheduledCoroutine()
@@ -665,7 +668,7 @@ namespace bLua
             });
         }
 
-        int runningCoroutines
+        private int runningCoroutines
         {
             get
             {
@@ -690,7 +693,8 @@ namespace bLua
 
             object[] a = new object[nargs + 1];
             a[0] = _fn;
-            if (nargs > 0)
+            if (_args != null
+                && nargs > 0)
             {
                 for (int i = 0; i != _args.Length; ++i)
                 {
@@ -703,13 +707,14 @@ namespace bLua
         #endregion // Coroutines
 
         #region C# Garbage Collection
-        ConcurrentQueue<int> deleteQueue = new ConcurrentQueue<int>();
 
-        bLuaValue internalLua_garbageCollection = null;
+        private ConcurrentQueue<int> deleteQueue = new();
 
-        bool garbageCollecting = false;
-        bool requestStartGarbageCollecting = false;
-        bool requestStopGarbageCollecting = false;
+        private bLuaValue internalLua_garbageCollection;
+
+        private bool garbageCollecting;
+        private bool requestStartGarbageCollecting;
+        private bool requestStopGarbageCollecting;
 
 
         public void ManualCollectGarbage()
@@ -717,7 +722,7 @@ namespace bLua
             InternalCollectGarbage();
         }
 
-        async void CollectGarbage()
+        private async void CollectGarbage()
         {
             // Don't have two instances of the CollectGarbage thread; if this value is already set, don't continue
             if (garbageCollecting)
@@ -729,7 +734,8 @@ namespace bLua
             requestStartGarbageCollecting = false;
 
             // Only continue collecting while this value is set. This allows us to close the garbage collection thread from outside of it when we need to
-            while (!requestStopGarbageCollecting)
+            while (!requestStopGarbageCollecting
+                && initialized)
             {
                 InternalCollectGarbage();
 
@@ -740,18 +746,18 @@ namespace bLua
             requestStopGarbageCollecting = false;
 
             // If we've already re-requested to start garbage collecting again, go ahead and handle that here as the previous CollectGarbage() call would have failed
-            if (requestStartGarbageCollecting)
+            if (requestStartGarbageCollecting
+                && initialized)
             {
                 StartGarbageCollecting();
             }
         }
 
-        void InternalCollectGarbage()
+        private void InternalCollectGarbage()
         {
             Call(internalLua_garbageCollection);
 
-            int refid;
-            while (deleteQueue.TryDequeue(out refid))
+            while (deleteQueue.TryDequeue(out int refid))
             {
                 Lua.DestroyDynValue(this, refid);
             }
@@ -761,16 +767,22 @@ namespace bLua
         {
             if (!FeatureEnabled(Features.CSharpGarbageCollection))
             {
-                Debug.LogError("Can't use StartGarbageCollecting when the CSharpGarbageCollection feature is disabled.");
+                Debug.LogError($"Can't use {nameof(StartGarbageCollecting)} when the {nameof(Features.CSharpGarbageCollection)} feature is disabled.");
                 return;
             }
             
             if (settings.cSharpGarbageCollectionInterval <= 0)
             {
-                Debug.LogError("Can't use StartGarbageCollecting when this instance's setting for cSharpGarbageCollectionInterval is less than 0.");
+                Debug.LogError($"Can't use {nameof(StartGarbageCollecting)} when this instance's setting for {nameof(settings.cSharpGarbageCollectionInterval)} is less than 0.");
                 return;
             }
 
+            if (requestStopGarbageCollecting)
+            {
+                Debug.LogError($"Can't use {nameof(StartGarbageCollecting)} when this instance's {nameof(requestStopGarbageCollecting)} is true.");
+                return;
+            }
+            
             CollectGarbage();
             requestStartGarbageCollecting = true;
         }
@@ -805,15 +817,13 @@ namespace bLua
 
         #region Errors
         public delegate void LuaErrorDelegate(string _message, string _engineTrace = null);
-        /// <summary> This delegate is called whenever a Lua Error happens. Allows for bLua features (or developers) to listen. </summary>
-        public LuaErrorDelegate LuaErrorHandler;
 
-        void ErrorInternal(string _message, string _luaStackTrace = null, string _cSharpStackTrace = null)
+        /// <summary> This delegate is called whenever a Lua Error happens. Allows for bLua features (or developers) to listen. </summary>
+        public LuaErrorDelegate LuaErrorHandler = null;
+
+        private void ErrorInternal(string _message, string _luaStackTrace = null, string _cSharpStackTrace = null)
         {
-            if (LuaErrorHandler != null)
-            {
-                LuaErrorHandler(_message, _luaStackTrace != null ? _luaStackTrace : "");
-            }
+            LuaErrorHandler?.Invoke(_message, _luaStackTrace != null ? _luaStackTrace : "");
 
             if (settings.internalVerbosity >= bLuaSettings.InternalErrorVerbosity.Normal
                 && !string.IsNullOrEmpty(_luaStackTrace))
@@ -842,7 +852,7 @@ namespace bLua
                 _luaStackTrace = Lua.TraceMessage(this);
             }
 
-            ErrorInternal(_message, _luaStackTrace, null);
+            ErrorInternal(_message, _luaStackTrace);
         }
 
         public void ErrorFromCSharp(Exception _exception, string _prependedErrorInfo = "")
@@ -966,8 +976,7 @@ namespace bLua
 
         public bLuaValue FullLookup(bLuaValue _value, string _key)
         {
-            bLuaValue fn;
-            if (lookups.TryGetValue(_key, out fn) == false)
+            if (lookups.TryGetValue(_key, out bLuaValue fn) == false)
             {
                 fn = DoBuffer("lookup", $"return function(obj) return obj.{_key} end");
                 lookups.Add(_key, fn);
@@ -978,8 +987,7 @@ namespace bLua
 
         public bLuaValue InternString(string s)
         {
-            bLuaValue result;
-            if (internedStrings.TryGetValue(s, out result))
+            if (internedStrings.TryGetValue(s, out bLuaValue result))
             {
                 return result;
             }
@@ -1020,6 +1028,12 @@ namespace bLua
                 MethodCallInfo methodCallInfo = mainThreadInstance.registeredMethods[n];
                 GlobalMethodCallInfo info = methodCallInfo as GlobalMethodCallInfo;
 
+                if (info == null)
+                {
+                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_invalidMethodIndex}{n}");
+                    return 0;
+                }
+                
                 object[] parms = null;
                 int parmsIndex = 0;
 
@@ -1112,6 +1126,12 @@ namespace bLua
                 MethodCallInfo methodCallInfo = mainThreadInstance.registeredMethods[n];
                 DelegateCallInfo info = methodCallInfo as DelegateCallInfo;
 
+                if (info == null)
+                {
+                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_invalidMethodIndex}{n}");
+                    return 0;
+                }
+                
                 object[] parms = null;
                 int parmsIndex = 0;
 
