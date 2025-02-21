@@ -59,3 +59,5 @@ sysinfo.txt
 # Crashlytics generated file
 crashlytics-build.properties
 
+.idea/.idea.blua-example/.idea/vcs.xml
+.idea/.idea.blua-example/.idea/indexLayout.xml
