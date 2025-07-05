@@ -740,5 +740,41 @@ namespace bLua
                 return MethodCallInfo.ParamType.Void;
             }
         }
+
+        public static bool IsTupleType(this Type _type)
+        {
+            if (!_type.IsGenericType)
+            {
+                return false;
+            }
+            
+            Type genericType = _type.GetGenericTypeDefinition();
+            if (genericType == null)
+            {
+                return false;
+            }
+
+            if (genericType == typeof(ValueTuple<>)
+                || genericType == typeof(ValueTuple<,>)
+                || genericType == typeof(ValueTuple<,,>)
+                || genericType == typeof(ValueTuple<,,,>)
+                || genericType == typeof(ValueTuple<,,,,>)
+                || genericType == typeof(ValueTuple<,,,,,>)
+                || genericType == typeof(ValueTuple<,,,,,,>)
+                || genericType == typeof(ValueTuple<,,,,,,,>)
+                || genericType == typeof(Tuple<>)
+                || genericType == typeof(Tuple<,>)
+                || genericType == typeof(Tuple<,,>)
+                || genericType == typeof(Tuple<,,,>)
+                || genericType == typeof(Tuple<,,,,>)
+                || genericType == typeof(Tuple<,,,,,>)
+                || genericType == typeof(Tuple<,,,,,,>)
+                || genericType == typeof(Tuple<,,,,,,,>))
+            {
+                return true;
+            }
+
+            return false;
+        }
     }
 } // bLua namespace

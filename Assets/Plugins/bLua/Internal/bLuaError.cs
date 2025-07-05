@@ -27,6 +27,8 @@ namespace bLua.Internal
         public const string error_objectNotProvided = "object not provided when calling userdata: ";
         public const string error_invalidUserdata = "could not find valid userdata object";
 
+        public const string error_coroutineWrap = "error in coroutine.wrap: ";
+
         public const string error_stackIsEmpty = "stack is empty";
         public const string error_unrecognizedStackPush = "unrecognized object pushing onto stack: ";
 

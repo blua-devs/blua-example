@@ -58,8 +58,8 @@ namespace bLua
         /// programs do not crash) and therefore can compromise otherwise secure code." </remarks>
         /// <summary> The Debug Library (https://www.lua.org/manual/5.4/manual.html#6.10). </summary>
         Debug = 512,
-        /// <summary> Includes `wait(t)`, `spawn(fn)`, and `delay(t, fn)` function(s) that can be used for better threading and coroutine control in Lua. NOTE: 
-        /// Feature.Coroutines needs to be enabled for this feature to work. </summary>
+        /// <summary> Includes `thread.wait(t)`, `thread.spawn(fn)`, and `thread.delay(t, fn)` function(s) that can be used for better threading and coroutine
+        /// control in Lua. NOTE: Feature.Coroutines needs to be enabled for this feature to work. </summary>
         ThreadMacros = 1024,
         /// <summary> Includes `print(s)` function(s) as globals. </summary>
         HelperMacros = 2048,
@@ -71,7 +71,10 @@ namespace bLua
         /// <remarks> WARNING! If NOT enabled, you may experience leftover Lua userdata (and bLuaValue objects in C#) that NEVER get garbage collected. It is
         /// highly recommended to keep this setting on as a lightweight backup to prevent potentially consuming all available memory. </remarks>
         /// <summary> When enabled, bLua will run its own GC system to clean up Lua userdata that isn't normally cleaned up by Lua's GC. </summary>
-        CSharpGarbageCollection = 8192
+        CSharpGarbageCollection = 8192,
+        /// <remarks> WARNING! This feature is EXPERIMENTAL and may cause errors when running async C# methods. </remarks>
+        /// <summary> When enabled, bLua will run C# async methods as coroutines in Lua, meaning execution will not continue until the async method is done. </summary>
+        AsyncUserDataMethods = 16384
     }
 
     /// <summary> Contains settings for the bLua runtime. </summary>
@@ -94,13 +97,13 @@ namespace bLua
             | Features.Debug
             | Features.ThreadMacros
             | Features.HelperMacros
-            | Features.ImplicitSyntaxSugar
             | Features.CSharpGarbageCollection;
 
         /// <remarks> WARNING! Some of these features include developer warnings, please review the remarks on individual features. </remarks>
-        /// <summary> Includes all the features Lua and bLua have to offer minus experimental bLua features. </summary>
-        public static Features SANDBOX_ALL_NONEXPERIMENTAL = SANDBOX_ALL
-            & ~Features.ImplicitSyntaxSugar; // There is at least one known issue with ImplicitSyntaxSugar uncovered in the bLua example Unit Tests
+        /// <summary> Includes all the features Lua and bLua have to offer plus experimental bLua features. </summary>
+        public static Features SANDBOX_ALL_EXPERIMENTAL = SANDBOX_ALL
+            | Features.ImplicitSyntaxSugar // There is at least one known issue with ImplicitSyntaxSugar uncovered in the bLua example Unit Tests
+            | Features.AsyncUserDataMethods;
 
         /// <remarks> WARNING! Some of these features include developer warnings, please review the remarks on individual features. </remarks>
         /// <summary> Includes most Lua and bLua features, specifically ones that might be used commonly in modding. </summary>
@@ -250,8 +253,8 @@ namespace bLua
 
         #region Initialization
         /// <summary> Whether bLua has been initialized. </summary>
-        private bool initialized = false;
-        private bool reinitializing = false;
+        private bool initialized;
+        private bool reinitializing;
 
 
         /// <summary> Initialize Lua and handle enabling/disabled features based on the current sandbox. </summary>
@@ -462,14 +465,16 @@ namespace bLua
             if (FeatureEnabled(Features.ThreadMacros))
             {
                 DoBuffer("blua_internal_threadmacros",
-                    @"function wait(t)
+                    @$"thread = {"{}"}
+
+                    function thread.wait(t)
                         local startTime = blua_internal_time()
                         while blua_internal_time() < startTime + t do
                             coroutine.yield()
                         end
                     end
 
-                    function spawn(fn, a, b, c, d, e, f, g, h)
+                    function thread.spawn(fn, a, b, c, d, e, f, g, h)
                         local co = coroutine.create(fn)
                         local res, error = coroutine.resume(co, a, b, c, d, e, f, g, h)
                         if not res then
@@ -480,9 +485,9 @@ namespace bLua
                         end
                     end
 
-                    function delay(t, fn)
-                        spawn(function()
-                            wait(t)
+                    function thread.delay(t, fn)
+                        thread.spawn(function()
+                            thread.wait(t)
                             fn()
                         end)
                     end");
@@ -623,20 +628,20 @@ namespace bLua
         }
         #endregion // Tick
 
-        #region Coroutines
-
-        private struct ScheduledCoroutine
+        #region Await Async
+        public void AwaitAsyncHandle(bLuaAsyncHandle _handle)
         {
-            public bLuaValue fn;
-            public object[] args;
-            public int debugTag;
+            bLuaAsyncMethod asyncMethod = new bLuaAsyncMethod(_handle);
+            CallCoroutine(internalLua_awaitAsyncHandle, asyncMethod);
         }
-
+        #endregion // Await Async
+        
+        #region Coroutines
+        private const string internalLua_trackedCoroutines = "tracked_coroutines";
+        
         private bLuaValue internalLua_callCoroutine;
         private bLuaValue internalLua_updateCoroutine;
         private bLuaValue internalLua_cancelCoroutines;
-
-        private List<ScheduledCoroutine> scheduledCoroutines = new();
 
         private int coroutineID;
 
@@ -646,33 +651,14 @@ namespace bLua
             using (Lua.profile_luaCo.Auto())
             {
                 Call(internalLua_updateCoroutine);
-
-                while (scheduledCoroutines.Count > 0)
-                {
-                    var co = scheduledCoroutines[0];
-                    scheduledCoroutines.RemoveAt(0);
-
-                    CallCoroutine(co.fn, co.args);
-                }
             }
-        }
-
-        private void ScheduleCoroutine(bLuaValue _fn, params object[] _args)
-        {
-            ++coroutineID;
-            scheduledCoroutines.Add(new ScheduledCoroutine()
-            {
-                fn = _fn,
-                args = _args,
-                debugTag = coroutineID,
-            });
         }
 
         private int runningCoroutines
         {
             get
             {
-                LuaLibAPI.lua_getglobal(state, "builtin_coroutines");
+                LuaLibAPI.lua_getglobal(state, internalLua_trackedCoroutines);
                 int len = (int)LuaLibAPI.lua_rawlen(state, -1);
                 Lua.PopStack(this);
                 return len;
@@ -1397,7 +1383,7 @@ namespace bLua
             }
         }
         #endregion // C Functions called from Lua
-
+        
         #region Userdata
         /// <summary> Registers all C# types in all assemblies with the [bLuaUserData] attribute as Lua userdata on this particular instance. </summary>
         public void RegisterAllBLuaUserData()

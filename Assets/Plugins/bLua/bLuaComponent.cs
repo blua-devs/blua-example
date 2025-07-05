@@ -69,13 +69,9 @@ public class bLuaComponent : MonoBehaviour
         {
             instance = new bLuaInstance(new bLuaSettings()
             {
-                features = bLuaSettings.SANDBOX_ALL_NONEXPERIMENTAL,
-                tickBehavior = bLuaSettings.TickBehavior.Manual,
-                autoRegisterTypes = bLuaSettings.AutoRegisterTypes.None
+                features = bLuaSettings.SANDBOX_ALL_EXPERIMENTAL,
+                tickBehavior = bLuaSettings.TickBehavior.Manual
             });
-            
-            // Register all the types we intend on using
-            instance.RegisterAllBLuaUserData();
         }
 
         if (environment == null)
@@ -159,7 +155,7 @@ public class bLuaComponent : MonoBehaviour
             if (func != null
                 && func.Type == DataType.Function)
             {
-                func.Call();
+                func.CallCoroutine();
             }
         }
     }

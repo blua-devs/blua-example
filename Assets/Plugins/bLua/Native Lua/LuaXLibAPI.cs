@@ -6,6 +6,9 @@ namespace bLua.NativeLua
     public static class LuaXLibAPI
     {
         [DllImport(Lua.LUA_DLL)]
+        public static extern int luaL_error(System.IntPtr state, string fmt);
+        
+        [DllImport(Lua.LUA_DLL)]
         public static extern void luaL_traceback(System.IntPtr state, System.IntPtr state2, string msg, int level);
 
         [DllImport(Lua.LUA_DLL)]

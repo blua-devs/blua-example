@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Unity.Profiling;
 using bLua.Internal;
+using UnityEngine;
 
 namespace bLua.NativeLua
 {
@@ -47,6 +48,13 @@ namespace bLua.NativeLua
         public static int LUA_TNONE = -1;
         public static int LUA_MAXSTACK = 1000000;
         public static int LUA_REGISTRYINDEX = (-LUA_MAXSTACK - 1000);
+        
+        public static int LUA_OK = 0;
+        public static int LUA_YIELD = 1;
+        public static int LUA_ERRRUN = 2;
+        public static int LUA_ERRSYNTAX = 3;
+        public static int LUA_ERRMEM = 4;
+        public static int LUA_ERRERR = 5;
 
         public static int LUA_RIDX_MAINTHREAD = 1;
         public static int LUA_RIDX_GLOBALS = 2;
@@ -57,6 +65,9 @@ namespace bLua.NativeLua
         public static ProfilerMarker profile_luaCall = new("Lua.Call");
         public static ProfilerMarker profile_luaCallInner = new("Lua.CallInner");
 
+        public const string LUA_COROUTINE = "coroutine";
+        public const string LUA_COROUTINE_WRAP = "wrap";
+        
         private static StrLen strlen = new();
 
 
@@ -209,6 +220,12 @@ namespace bLua.NativeLua
             PushClosure(_instance, fn, upvalues);
         }
 
+        public static bLuaValue GetUpvalue(bLuaInstance _instance, int _index, int _n)
+        {
+            LuaLibAPI.lua_getupvalue(_instance.state, _index, _n);
+            return PopStackIntoValue(_instance);
+        }
+        
         public static void PushNewTable(bLuaInstance _instance, int _reserveArray = 0, int _reserveTable = 0)
         {
             LuaLibAPI.lua_checkstack(_instance.state, 1);
@@ -300,7 +317,6 @@ namespace bLua.NativeLua
                     return bLuaValue.Nil;
 
                 default:
-                    //pops the value on top of the stack and makes a reference to it.
                     int refid = LuaXLibAPI.luaL_ref(_instance.state, LUA_REGISTRYINDEX);
                     return new bLuaValue(_instance, refid);
             }
@@ -581,5 +597,28 @@ namespace bLua.NativeLua
             PopStack(_instance);
         }
 #endregion // Arrays
+
+#region Coroutines
+        public static bool IsYieldable(bLuaInstance _instance)
+        {
+            return LuaLibAPI.lua_isyieldable(_instance.state) == 1;
+        }
+
+        public static int Yield(bLuaInstance _instance, int _results)
+        {
+            return LuaLibAPI.lua_yieldk(_instance.state, _results, IntPtr.Zero, IntPtr.Zero);
+        }
+
+        public static int Resume(bLuaInstance _instance, int _results)
+        {
+            int status = LuaLibAPI.lua_resume(_instance.state, IntPtr.Zero, 0, out int nResults);
+            return nResults;
+        }
+
+        public static void PushThread(bLuaInstance _instance)
+        {
+            LuaLibAPI.lua_pushthread(_instance.state);
+        }
+#endregion // Coroutines
     }
 } // bLua.NativeLua namespace

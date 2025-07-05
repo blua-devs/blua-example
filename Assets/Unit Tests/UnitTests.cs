@@ -153,7 +153,7 @@ public class UnitTests : MonoBehaviour
     {
         bLuaInstance instance = new bLuaInstance(new bLuaSettings()
         {
-            features = bLuaSettings.SANDBOX_ALL_NONEXPERIMENTAL,
+            features = bLuaSettings.SANDBOX_ALL,
             internalVerbosity = bLuaSettings.InternalErrorVerbosity.Verbose
         });
 
@@ -309,7 +309,7 @@ public class UnitTests : MonoBehaviour
     {
         bLuaInstance instance = new bLuaInstance(new bLuaSettings()
         {
-            features = bLuaSettings.SANDBOX_ALL_NONEXPERIMENTAL,
+            features = bLuaSettings.SANDBOX_ALL,
             internalVerbosity = bLuaSettings.InternalErrorVerbosity.Verbose
         });
 
@@ -334,7 +334,7 @@ public class UnitTests : MonoBehaviour
     {
         bLuaInstance instance = new bLuaInstance(new bLuaSettings()
         {
-            features = bLuaSettings.SANDBOX_ALL_NONEXPERIMENTAL,
+            features = bLuaSettings.SANDBOX_ALL,
             internalVerbosity = bLuaSettings.InternalErrorVerbosity.Verbose
         });
 

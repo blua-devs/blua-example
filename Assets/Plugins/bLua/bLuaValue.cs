@@ -15,7 +15,7 @@ namespace bLua
 
         public DataType dataType = DataType.Unknown;
 
-        private bLuaInstance instance;
+        public bLuaInstance instance { get; private set; }
 
 
         public static bLuaValue Nil = new()
