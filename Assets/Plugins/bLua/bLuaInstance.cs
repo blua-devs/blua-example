@@ -627,14 +627,6 @@ namespace bLua
             requestStopTicking = true;
         }
         #endregion // Tick
-
-        #region Await Async
-        public void AwaitAsyncHandle(bLuaAsyncHandle _handle)
-        {
-            bLuaAsyncMethod asyncMethod = new bLuaAsyncMethod(_handle);
-            CallCoroutine(internalLua_awaitAsyncHandle, asyncMethod);
-        }
-        #endregion // Await Async
         
         #region Coroutines
         private const string internalLua_trackedCoroutines = "tracked_coroutines";
