@@ -1,10 +1,11 @@
 using System;
 using System.Reflection;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using Unity.Profiling;
 using bLua.Internal;
-using UnityEditorInternal;
 using UnityEngine;
 
 namespace bLua.NativeLua
@@ -628,14 +629,14 @@ namespace bLua.NativeLua
 #endregion // Arrays
 
 #region Coroutines
-        public static bool IsYieldable(bLuaInstance _instance)
+        public static bool IsYieldable(IntPtr _state)
         {
-            return LuaLibAPI.lua_isyieldable(_instance.state) == 1;
+            return LuaLibAPI.lua_isyieldable(_state) == 1;
         }
 
-        public static int Yield(bLuaInstance _instance, int _results)
+        public static LuaThreadStatus Yield(IntPtr _state, int _results)
         {
-            return LuaLibAPI.lua_yieldk(_instance.state, _results, IntPtr.Zero, IntPtr.Zero);
+            return (LuaThreadStatus)LuaLibAPI.lua_yieldk(_state, _results, IntPtr.Zero, IntPtr.Zero);
         }
 
         public static LuaThreadStatus Resume(IntPtr _state, IntPtr _instigator, int _nargs)
@@ -666,81 +667,18 @@ namespace bLua.NativeLua
             {
                 mainThreadInstance.state = _state;
 
-                int stackSize = LuaLibAPI.lua_gettop(_state);
-
-                int n = LuaLibAPI.lua_tointegerx(_state, UpValueIndex(1), IntPtr.Zero);
-
-                if (n < 0 || n >= mainThreadInstance.registeredMethods.Count)
+                if (!GetMethodInfoUpvalue(_state, mainThreadInstance, out MethodCallInfo methodCallInfo))
                 {
-                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_invalidMethodIndex}{n}");
-                    return 0;
-                }
-
-                MethodCallInfo methodCallInfo = mainThreadInstance.registeredMethods[n];
-                GlobalMethodCallInfo info = methodCallInfo as GlobalMethodCallInfo;
-
-                if (info == null)
-                {
-                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_invalidMethodIndex}{n}");
                     return 0;
                 }
                 
-                object[] parms = null;
-                int parmsIndex = 0;
-
-                int parametersLength = info.argTypes.Length;
-                if (parametersLength > 0 && info.argTypes[parametersLength - 1] == MethodCallInfo.ParamType.Params)
+                if (!PopStackIntoArgs(mainThreadInstance, methodCallInfo, out object[] args, 1))
                 {
-                    parametersLength--;
-                    if (stackSize > parametersLength)
-                    {
-                        parms = new object[(stackSize) - parametersLength];
-                        parmsIndex = parms.Length - 1;
-                    }
+                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_inFunctionCall}nil");
+                    return 0;
                 }
-
-                object[] args = new object[info.argTypes.Length];
-                int argIndex = args.Length - 1;
-
-                // Set the last args index to be the parameters array
-                if (parms != null)
-                {
-                    args[argIndex--] = parms;
-                }
-
-                while (argIndex > stackSize - 1)
-                {
-                    // Backfill any arguments with defaults.
-                    args[argIndex] = info.defaultArgs[argIndex];
-                    --argIndex;
-                }
-                while (stackSize - 1 > argIndex)
-                {
-                    // Backfill the parameters with values from the Lua stack
-                    if (parms != null)
-                    {
-                        parms[parmsIndex--] = PopStackIntoObject(mainThreadInstance);
-                    }
-                    else
-                    {
-                        PopStack(mainThreadInstance);
-                    }
-                    --stackSize;
-                }
-
-                while (stackSize > 0)
-                {
-                    args[argIndex] = bLuaUserData.PopStackIntoParamType(mainThreadInstance, info.argTypes[argIndex]);
-
-                    --stackSize;
-                    --argIndex;
-                }
-
-                object result = info.methodInfo.Invoke(info.objectInstance, args);
-
-                bLuaUserData.PushReturnTypeOntoStack(mainThreadInstance, info.returnType, result);
-                return 1;
-
+                
+                return (int)InvokeCSharpMethod(_state, mainThreadInstance, methodCallInfo, null, args);
             }
             catch (Exception e)
             {
@@ -763,82 +701,19 @@ namespace bLua.NativeLua
             try
             {
                 mainThreadInstance.state = _state;
-
-                int stackSize = LuaLibAPI.lua_gettop(_state);
-
-                int n = LuaLibAPI.lua_tointegerx(_state, UpValueIndex(1), IntPtr.Zero);
-
-                if (n < 0 || n >= mainThreadInstance.registeredMethods.Count)
+                
+                if (!GetMethodInfoUpvalue(_state, mainThreadInstance, out MethodCallInfo methodCallInfo))
                 {
-                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_invalidMethodIndex}{n}");
-                    return 0;
-                }
-
-                MethodCallInfo methodCallInfo = mainThreadInstance.registeredMethods[n];
-                DelegateCallInfo info = methodCallInfo as DelegateCallInfo;
-
-                if (info == null)
-                {
-                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_invalidMethodIndex}{n}");
                     return 0;
                 }
                 
-                object[] parms = null;
-                int parmsIndex = 0;
-
-                int parametersLength = info.argTypes.Length;
-                if (parametersLength > 0 && info.argTypes[parametersLength - 1] == MethodCallInfo.ParamType.Params)
+                if (!PopStackIntoArgs(mainThreadInstance, methodCallInfo, out object[] args))
                 {
-                    parametersLength--;
-                    if (stackSize > parametersLength)
-                    {
-                        parms = new object[(stackSize) - parametersLength];
-                        parmsIndex = parms.Length - 1;
-                    }
+                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_inFunctionCall}nil");
+                    return 0;
                 }
-
-                object[] args = new object[info.argTypes.Length];
-                int argIndex = args.Length - 1;
-
-                // Set the last args index to be the parameters array
-                if (parms != null)
-                {
-                    args[argIndex--] = parms;
-                }
-
-                while (argIndex > stackSize - 1)
-                {
-                    // Backfill any arguments with defaults.
-                    args[argIndex] = info.defaultArgs[argIndex];
-                    --argIndex;
-                }
-                while (stackSize - 1 > argIndex)
-                {
-                    // Backfill the parameters with values from the Lua stack
-                    if (parms != null)
-                    {
-                        parms[parmsIndex--] = PopStackIntoObject(mainThreadInstance);
-                    }
-                    else
-                    {
-                        PopStack(mainThreadInstance);
-                    }
-                    --stackSize;
-                }
-
-                while (stackSize > 0)
-                {
-                    args[argIndex] = bLuaUserData.PopStackIntoParamType(mainThreadInstance, info.argTypes[argIndex]);
-
-                    --stackSize;
-                    --argIndex;
-                }
-
-                object result = info.multicastDelegate.DynamicInvoke(args);
-
-                bLuaUserData.PushReturnTypeOntoStack(mainThreadInstance, info.returnType, result);
-                return 1;
-
+                
+                return (int)InvokeCSharpMethod(_state, mainThreadInstance, methodCallInfo, null, args);
             }
             catch (Exception e)
             {
@@ -862,99 +737,30 @@ namespace bLua.NativeLua
             {
                 mainThreadInstance.state = _state;
 
-                int stackSize = LuaLibAPI.lua_gettop(_state);
-                if (stackSize == 0 || LuaLibAPI.lua_type(_state, 1) != (int)DataType.UserData)
+                if (LuaLibAPI.lua_gettop(_state) == 0 // Stack size equals 0
+                    || LuaLibAPI.lua_type(_state, 1) != (int)DataType.UserData) // First arg passed isn't userdata
                 {
                     mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_objectNotProvided}");
                     return 0;
                 }
 
-                int n = LuaLibAPI.lua_tointegerx(_state, UpValueIndex(1), IntPtr.Zero);
-
-                if (n < 0 || n >= mainThreadInstance.registeredMethods.Count)
+                if (!GetMethodInfoUpvalue(_state, mainThreadInstance, out MethodCallInfo info))
                 {
-                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_invalidMethodIndex}{n}");
                     return 0;
                 }
 
-                MethodCallInfo info = mainThreadInstance.registeredMethods[n];
-
-                object[] parms = null;
-                int parmsIndex = 0;
-
-                int len = info.argTypes.Length;
-                if (len > 0 && info.argTypes[len - 1] == MethodCallInfo.ParamType.Params)
+                if (!GetLiveObjectUpvalue(_state, mainThreadInstance, out object liveObject))
                 {
-                    len--;
-                    if (stackSize - 1 > len)
-                    {
-                        parms = new object[(stackSize - 1) - len];
-                        parmsIndex = parms.Length - 1;
-                    }
-                }
-
-                object[] args = new object[info.argTypes.Length];
-                int argIndex = args.Length - 1;
-
-                if (parms != null)
-                {
-                    args[argIndex--] = parms;
-                }
-
-                while (argIndex > stackSize - 2)
-                {
-                    // Backfill any arguments with defaults.
-                    args[argIndex] = info.defaultArgs[argIndex];
-                    --argIndex;
-                }
-                while (stackSize - 2 > argIndex)
-                {
-                    if (parms != null)
-                    {
-                        parms[parmsIndex--] = PopStackIntoObject(mainThreadInstance);
-                    }
-                    else
-                    {
-                        PopStack(mainThreadInstance);
-                    }
-                    --stackSize;
-                }
-
-                while (stackSize > 1)
-                {
-                    args[argIndex] = bLuaUserData.PopStackIntoParamType(mainThreadInstance, info.argTypes[argIndex]);
-
-                    --stackSize;
-                    --argIndex;
-                }
-
-                if (LuaLibAPI.lua_gettop(_state) < 1)
-                {
-                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_stackIsEmpty}");
                     return 0;
                 }
 
-                int t = LuaLibAPI.lua_type(_state, 1);
-                if (t != (int)DataType.UserData)
+                if (!PopStackIntoArgs(mainThreadInstance, info, out object[] args, 1))
                 {
-                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_objectIsNotUserdata}{(DataType)t}");
+                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_inFunctionCall}nil");
                     return 0;
                 }
-
-                LuaLibAPI.lua_checkstack(_state, 1);
-                int res = LuaLibAPI.lua_getiuservalue(_state, 1, 1);
-                if (res != (int)DataType.Number)
-                {
-                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_objectNotProvided}");
-                    return 0;
-                }
-                int liveObjectIndex = LuaLibAPI.lua_tointegerx(_state, -1, IntPtr.Zero);
-                object obj = mainThreadInstance.liveObjects[liveObjectIndex];
-
-                object result = info.methodInfo.Invoke(obj, args);
-
-                bLuaUserData.PushReturnTypeOntoStack(mainThreadInstance, info.returnType, result);
-                return 1;
+                
+                return (int)InvokeCSharpMethod(_state, mainThreadInstance, info, liveObject, args);
             }
             catch (Exception e)
             {
@@ -978,64 +784,18 @@ namespace bLua.NativeLua
             {
                 mainThreadInstance.state = _state;
 
-                int n = LuaLibAPI.lua_tointegerx(_state, UpValueIndex(1), IntPtr.Zero);
-                MethodCallInfo info = mainThreadInstance.registeredMethods[n];
-
-                int stackSize = LuaLibAPI.lua_gettop(_state);
-
-                object[] parms = null;
-                int parmsIndex = 0;
-
-                int len = info.argTypes.Length;
-                if (len > 0 && info.argTypes[len - 1] == MethodCallInfo.ParamType.Params)
+                if (!GetMethodInfoUpvalue(_state, mainThreadInstance, out MethodCallInfo info))
                 {
-                    len--;
-                    if (stackSize > len)
-                    {
-                        parms = new object[stackSize - len];
-                        parmsIndex = parms.Length - 1;
-                    }
+                    return 0;
+                }
+                
+                if (!PopStackIntoArgs(mainThreadInstance, info, out object[] args))
+                {
+                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_inFunctionCall}nil");
+                    return 0;
                 }
 
-                object[] args = new object[info.argTypes.Length];
-                int argIndex = args.Length - 1;
-
-                if (parms != null)
-                {
-                    args[argIndex--] = parms;
-                }
-
-                while (argIndex > stackSize - 1)
-                {
-                    // Backfill any arguments with nulls.
-                    args[argIndex] = info.defaultArgs[argIndex];
-                    --argIndex;
-                }
-                while (stackSize - 1 > argIndex)
-                {
-                    if (parms != null)
-                    {
-                        parms[parmsIndex--] = PopStackIntoObject(mainThreadInstance);
-                    }
-                    else
-                    {
-                        PopStack(mainThreadInstance);
-                    }
-                    --stackSize;
-                }
-
-                while (stackSize > 0)
-                {
-                    args[argIndex] = bLuaUserData.PopStackIntoParamType(mainThreadInstance, info.argTypes[argIndex]);
-
-                    --stackSize;
-                    --argIndex;
-                }
-
-                object result = info.methodInfo.Invoke(null, args);
-
-                bLuaUserData.PushReturnTypeOntoStack(mainThreadInstance, info.returnType, result);
-                return 1;
+                return (int)InvokeCSharpMethod(_state, mainThreadInstance, info, null, args);
             }
             catch (Exception e)
             {
@@ -1048,5 +808,141 @@ namespace bLua.NativeLua
             }
         }
 #endregion // MonoPInvokeCallback
+        
+#region Invocation
+        public static LuaThreadStatus InvokeCSharpMethod(IntPtr _state, bLuaInstance _instance, MethodCallInfo _methodCallInfo, object _liveObject, params object[] _args)
+        {
+            object result = InvokeMethodCallInfo(_methodCallInfo, _liveObject, _args);
+            bLuaUserData.PushReturnTypeOntoStack(_instance, _methodCallInfo.returnType, result);
+
+            return LuaThreadStatus.LUA_OK;
+        }
+
+        private static object InvokeMethodCallInfo(MethodCallInfo _methodCallInfo, object _liveObject, params object[] _args)
+        {
+            if (_methodCallInfo is DelegateCallInfo delegateCallInfo)
+            {
+                return delegateCallInfo.multicastDelegate.DynamicInvoke(_args);
+            }
+            
+            if (_methodCallInfo is GlobalMethodCallInfo globalMethodCallInfo)
+            {
+                return globalMethodCallInfo.methodInfo.Invoke(globalMethodCallInfo.objectInstance, _args);
+            }
+            
+            return _methodCallInfo.methodInfo.Invoke(_liveObject, _args);
+        }
+        
+        public static bool GetMethodInfoUpvalue(IntPtr _state, bLuaInstance _instance, out MethodCallInfo _methodInfo)
+        {
+            _methodInfo = null;
+
+            int m = LuaLibAPI.lua_tointegerx(_state, UpValueIndex(1), IntPtr.Zero);
+            if (m < 0 || m >= _instance.registeredMethods.Count)
+            {
+                _instance.ErrorFromCSharp($"{bLuaError.error_invalidMethodIndex}{m}");
+                return false;
+            }
+            
+            _methodInfo = _instance.registeredMethods[m];
+
+            return true;
+        }
+
+        public static bool GetLiveObjectUpvalue(IntPtr _state, bLuaInstance _instance, out object _liveObject)
+        {
+            _liveObject = null;
+
+            if (LuaLibAPI.lua_gettop(_state) < 1)
+            {
+                _instance.ErrorFromCSharp($"{bLuaError.error_stackIsEmpty}");
+                return false;
+            }
+
+            DataType dataType = (DataType)LuaLibAPI.lua_type(_state, 1);
+            if (dataType != DataType.UserData)
+            {
+                _instance.ErrorFromCSharp($"{bLuaError.error_objectIsNotUserdata}{dataType}");
+                return false;
+            }
+
+            if (LuaLibAPI.lua_checkstack(_state, 1) == 0)
+            {
+                _instance.ErrorFromCSharp($"{bLuaError.error_stackHasNoRoom}");
+                return false;
+            }
+            
+            int liveObjectRefId = LuaLibAPI.lua_tointegerx(_state, UpValueIndex(2), IntPtr.Zero);
+            if (liveObjectRefId < 0 || liveObjectRefId >= _instance.liveObjects.Length)
+            {
+                _instance.ErrorFromCSharp($"{bLuaError.error_invalidLiveObjectIndex}{liveObjectRefId}");
+                return false;
+            }
+
+            _liveObject = _instance.liveObjects[liveObjectRefId];
+
+            return true;
+        }
+        
+        public static bool PopStackIntoArgs(bLuaInstance _instance, MethodCallInfo _methodInfo, out object[] _args, int _skipNum = 0)
+        {
+            int stackSize = LuaLibAPI.lua_gettop(_instance.state);
+            
+            _args = new object[_methodInfo.argTypes.Length];
+            int argIndex = _args.Length - 1;
+            
+            // If we have a params argument, prepare our iterators for that data
+            object[] parms = null;
+            int parmsIndex = 0;
+            int len = _methodInfo.argTypes.Length;
+            if (len > 0 && _methodInfo.argTypes[len - 1] == MethodCallInfo.ParamType.Params)
+            {
+                len--;
+                if (stackSize - _skipNum > len)
+                {
+                    parms = new object[stackSize - _skipNum - len];
+                    parmsIndex = parms.Length - 1;
+                }
+            }
+
+            // If we had a params argument, populate that argument with the params array
+            if (parms != null)
+            {
+                _args[argIndex--] = parms;
+            }
+            
+            // Populate arguments with defaults
+            while (argIndex > stackSize - (1 + _skipNum))
+            {
+                _args[argIndex] = _methodInfo.defaultArgs[argIndex];
+                --argIndex;
+            }
+            
+            // Populate params from stack
+            while (stackSize - (1 + _skipNum) > argIndex)
+            {
+                if (parms != null)
+                {
+                    parms[parmsIndex--] = PopStackIntoValue(_instance);
+                }
+                else
+                {
+                    PopStack(_instance);
+                }
+                --stackSize;
+            }
+
+            // Populate arguments from stack
+            while (stackSize > _skipNum)
+            {
+                _args[argIndex] = bLuaUserData.PopStackIntoParamType(_instance, _methodInfo.argTypes[argIndex]);
+
+                --stackSize;
+                --argIndex;
+            }
+            
+            return true;
+        }
+#endregion // Invocation
     }
 } // bLua.NativeLua namespace

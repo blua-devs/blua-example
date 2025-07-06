@@ -2,7 +2,6 @@ using System;
 using System.Linq;
 using System.Reflection;
 using bLua.NativeLua;
-using System.Runtime.CompilerServices;
 
 namespace bLua.Internal
 {
@@ -165,31 +164,6 @@ namespace bLua.Internal
             return false;
         }
 
-        private static bool GetCallMetamethodUpvalues(IntPtr _originalState, bLuaInstance _instance, out MethodCallInfo _methodInfo, out object _liveObject)
-        {
-            _methodInfo = null;
-            _liveObject = null;
-
-            int m = LuaLibAPI.lua_tointegerx(_originalState, Lua.UpValueIndex(1), IntPtr.Zero);
-            if (m < 0 || m >= _instance.registeredMethods.Count)
-            {
-                _instance.ErrorFromCSharp($"{bLuaError.error_invalidMethodIndex}{m}");
-                return false;
-            }
-
-            int l = LuaLibAPI.lua_tointegerx(_originalState, Lua.UpValueIndex(2), IntPtr.Zero);
-            if (l < 0 || l >= _instance.liveObjects.Length)
-            {
-                _instance.ErrorFromCSharp($"{bLuaError.error_invalidLiveObjectIndex}{m}");
-                return false;
-            }
-
-            _methodInfo = _instance.registeredMethods[m];
-            _liveObject = _instance.liveObjects[l];
-
-            return true;
-        }
-
         private static bool PushSyntacticSugarProxy(bLuaInstance _instance, int _methodIndex, int _liveObjectIndex)
         {
             if (_liveObjectIndex < 0 || _liveObjectIndex > _instance.syntaxSugarProxies.Length)
@@ -219,76 +193,7 @@ namespace bLua.Internal
 
             return true;
         }
-
-        private static bool PopStackIntoArgs(bLuaInstance _instance, MethodCallInfo _methodInfo, object _liveObject, out object[] _args)
-        {
-            bool isExtensionMethod = _methodInfo.methodInfo.IsDefined(typeof(ExtensionAttribute), true);
-            
-            int stackSize = LuaLibAPI.lua_gettop(_instance.state);
-            if (stackSize == 0 || LuaLibAPI.lua_type(_instance.state, 1) != (int)DataType.UserData)
-            {
-                _instance.ErrorFromCSharp($"{bLuaError.error_objectNotProvided}");
-                _args = new object[0];
-                return false;
-            }
-
-            object[] parms = null;
-            int parmsIndex = 0;
-
-            int len = _methodInfo.argTypes.Length;
-            if (len > 0 && _methodInfo.argTypes[len - 1] == MethodCallInfo.ParamType.Params)
-            {
-                len--;
-                if (stackSize - 1 > len)
-                {
-                    parms = new object[(stackSize - 1) - len];
-                    parmsIndex = parms.Length - 1;
-                }
-            }
-
-            _args = new object[isExtensionMethod ? _methodInfo.argTypes.Length + 1 : _methodInfo.argTypes.Length];
-            int argIndex = _args.Length - 1;
-
-            if (parms != null)
-            {
-                _args[argIndex--] = parms;
-            }
-
-            while (argIndex > stackSize - 2)
-            {
-                // Backfill any arguments with defaults.
-                _args[argIndex] = _methodInfo.defaultArgs[argIndex];
-                --argIndex;
-            }
-            while (stackSize - 2 > argIndex)
-            {
-                if (parms != null)
-                {
-                    parms[parmsIndex--] = Lua.PopStackIntoValue(_instance);
-                }
-                else
-                {
-                    Lua.PopStack(_instance);
-                }
-                --stackSize;
-            }
-
-            while (stackSize > 1)
-            {
-                _args[argIndex] = bLuaUserData.PopStackIntoParamType(_instance, _methodInfo.argTypes[argIndex]);
-
-                --stackSize;
-                --argIndex;
-            }
-
-            if (isExtensionMethod)
-            {
-                _args[0] = _liveObject;
-            }
-
-            return true;
-        }
-        #endregion // Helper functions
+    #endregion // Helper functions
 
         [MonoPInvokeCallback]
         public static int Metamethod_Call(IntPtr _state)
@@ -300,21 +205,30 @@ namespace bLua.Internal
             {
                 mainThreadInstance.state = _state;
 
-                if (!GetCallMetamethodUpvalues(_state, mainThreadInstance, out MethodCallInfo methodCallInfo, out object liveObject))
+                if (LuaLibAPI.lua_gettop(_state) == 0 // Stack size equals 0
+                    || LuaLibAPI.lua_type(_state, 1) != (int)DataType.UserData) // First arg passed isn't userdata
+                {
+                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_objectNotProvided}");
+                    return 0;
+                }
+                
+                if (!Lua.GetMethodInfoUpvalue(_state, mainThreadInstance, out MethodCallInfo methodCallInfo))
+                {
+                    return 0;
+                }
+                
+                if (!Lua.GetLiveObjectUpvalue(_state, mainThreadInstance, out object liveObject))
+                {
+                    return 0;
+                }
+                
+                if (!Lua.PopStackIntoArgs(mainThreadInstance, methodCallInfo, out object[] args, 1))
                 {
                     mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_inMetamethodCall}nil");
                     return 0;
                 }
-
-                if (!PopStackIntoArgs(mainThreadInstance, methodCallInfo, liveObject, out object[] args))
-                {
-                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_inMetamethodCall}nil");
-                    return 0;
-                }
-
-                object result = methodCallInfo.methodInfo.Invoke(liveObject, args);
-                bLuaUserData.PushReturnTypeOntoStack(mainThreadInstance, methodCallInfo.returnType, result);
-                return 1;
+                
+                return (int)Lua.InvokeCSharpMethod(_state, mainThreadInstance, methodCallInfo, liveObject, args);
             }
             catch (Exception e)
             {
