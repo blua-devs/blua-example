@@ -489,11 +489,11 @@ namespace bLua
                 LuaCFunction fn;
                 if (methodInfo.IsStatic || isExtensionMethod)
                 {
-                    fn = bLuaInstance.CallStaticUserDataFunction;
+                    fn = Lua.CallStaticUserDataFunction;
                 }
                 else
                 {
-                    fn = bLuaInstance.CallUserDataFunction;
+                    fn = Lua.CallUserDataFunction;
                 }
 
                 _instance.registeredMethods.Add(new MethodCallInfo()

@@ -110,6 +110,9 @@ namespace bLua.NativeLua
         public static extern int lua_type(System.IntPtr state, int idx);
 
         [DllImport(Lua.LUA_DLL)]
+        public static extern System.IntPtr lua_topointer(System.IntPtr state, int idx);
+        
+        [DllImport(Lua.LUA_DLL)]
         public static extern int lua_toboolean(System.IntPtr state, int idx);
 
         [DllImport(Lua.LUA_DLL)]

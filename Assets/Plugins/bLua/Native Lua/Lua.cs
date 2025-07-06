@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Unity.Profiling;
 using bLua.Internal;
+using UnityEditorInternal;
 using UnityEngine;
 
 namespace bLua.NativeLua
@@ -27,13 +28,29 @@ namespace bLua.NativeLua
     {
         public int result;
     }
-
+    
+    class LuaCoroutine
+    {
+        public IntPtr state;
+        public int refId;
+    }
+    
     public struct StringCacheEntry
     {
         public string key;
         public bLuaValue value;
     }
 
+    public enum LuaThreadStatus
+    {
+        LUA_OK = 0,
+        LUA_YIELD = 1,
+        LUA_ERRRUN = 2,
+        LUA_ERRSYNTAX = 3,
+        LUA_ERRMEM = 4,
+        LUA_ERRERR = 5
+    }
+    
     /// <summary> Contains helper functions as well as functions that interface with the LuaLibAPI and LuaXLibAPI. </summary>
     public static class Lua
     {
@@ -48,13 +65,6 @@ namespace bLua.NativeLua
         public static int LUA_TNONE = -1;
         public static int LUA_MAXSTACK = 1000000;
         public static int LUA_REGISTRYINDEX = (-LUA_MAXSTACK - 1000);
-        
-        public static int LUA_OK = 0;
-        public static int LUA_YIELD = 1;
-        public static int LUA_ERRRUN = 2;
-        public static int LUA_ERRSYNTAX = 3;
-        public static int LUA_ERRMEM = 4;
-        public static int LUA_ERRERR = 5;
 
         public static int LUA_RIDX_MAINTHREAD = 1;
         public static int LUA_RIDX_GLOBALS = 2;
@@ -116,11 +126,10 @@ namespace bLua.NativeLua
             return UTF8ToStr(bytes);
         }
 
-        public static void DestroyDynValue(bLuaInstance _instance, int _referenceID)
+        public static void Unreference(bLuaInstance _instance, int _referenceID)
         {
             if (_instance.state != IntPtr.Zero)
             {
-                //remove the value from the registry.
                 LuaXLibAPI.luaL_unref(_instance.state, LUA_REGISTRYINDEX, _referenceID);
             }
         }
@@ -145,36 +154,39 @@ namespace bLua.NativeLua
 #region Push (Stack)
         public static void PushNil(bLuaInstance _instance)
         {
-            LuaLibAPI.lua_checkstack(_instance.state, 1);
-
-            LuaLibAPI.lua_pushnil(_instance.state);
+            PushNil(_instance.state);
         }
-
-        public static void LuaPushCFunction(bLuaInstance _instance, LuaCFunction _fn)
+        public static void PushNil(IntPtr _state)
         {
-            LuaLibAPI.lua_pushcclosure(_instance.state, Marshal.GetFunctionPointerForDelegate(_fn), 0);
+            LuaLibAPI.lua_checkstack(_state, 1);
+            LuaLibAPI.lua_pushnil(_state);
         }
 
-        public static void PushClosure(bLuaInstance _instance, LuaCFunction _fn, bLuaValue[] _upvalues)
+        public static void LuaPushCFunction(bLuaInstance _instance, IntPtr _state, LuaCFunction _fn)
+        {
+            LuaLibAPI.lua_pushcclosure(_state, Marshal.GetFunctionPointerForDelegate(_fn), 0);
+        }
+
+        public static void PushClosure(bLuaInstance _instance, IntPtr _state, LuaCFunction _fn, bLuaValue[] _upvalues)
         {
             for (int i = 0; i != _upvalues.Length; ++i)
             {
-                PushStack(_instance, _upvalues[i]);
+                PushStack(_state, _upvalues[i]);
             }
 
-            LuaLibAPI.lua_pushcclosure(_instance.state, Marshal.GetFunctionPointerForDelegate(_fn), _upvalues.Length);
+            LuaLibAPI.lua_pushcclosure(_state, Marshal.GetFunctionPointerForDelegate(_fn), _upvalues.Length);
         }
 
-        public static void PushClosure(bLuaInstance _instance, GlobalMethodCallInfo _globalMethodCallInfo)
+        public static void PushClosure(bLuaInstance _instance, IntPtr _state, GlobalMethodCallInfo _globalMethodCallInfo)
         {
-            LuaCFunction fn = bLuaInstance.CallGlobalMethod;
+            LuaCFunction fn = CallGlobalMethod;
             bLuaValue[] upvalues = new bLuaValue[] { bLuaValue.CreateNumber(_instance, _instance.registeredMethods.Count) };
             _instance.registeredMethods.Add(_globalMethodCallInfo);
 
-            PushClosure(_instance, fn, upvalues);
+            PushClosure(_instance, _state, fn, upvalues);
         }
 
-        public static void PushClosure<T>(bLuaInstance _instance, T _func) where T : MulticastDelegate
+        public static void PushClosure<T>(bLuaInstance _instance, IntPtr _state, T _func) where T : MulticastDelegate
         {
             MethodInfo methodInfo = _func.Method;
 
@@ -203,7 +215,7 @@ namespace bLua.NativeLua
                 }
             }
 
-            LuaCFunction fn = bLuaInstance.CallDelegate;
+            LuaCFunction fn = CallDelegate;
             bLuaValue[] upvalues = new bLuaValue[] { bLuaValue.CreateNumber(_instance, _instance.registeredMethods.Count) };
 
             DelegateCallInfo methodCallInfo = new DelegateCallInfo()
@@ -217,7 +229,7 @@ namespace bLua.NativeLua
             };
             _instance.registeredMethods.Add(methodCallInfo);
 
-            PushClosure(_instance, fn, upvalues);
+            PushClosure(_instance, _state, fn, upvalues);
         }
 
         public static bLuaValue GetUpvalue(bLuaInstance _instance, int _index, int _n)
@@ -240,48 +252,54 @@ namespace bLua.NativeLua
 
         public static void PushOntoStack(bLuaInstance _instance, object _object)
         {
+            PushOntoStack(_instance, _instance.state, _object);
+        }
+        
+        public static void PushOntoStack(bLuaInstance _instance, IntPtr _state, object _object)
+        {
             if (_object is bLuaValue dynValue)
             {
-                PushStack(_instance, dynValue);
+                PushStack(_state, dynValue);
                 return;
             }
-            else if (bLuaUserData.IsRegistered(_instance, _object.GetType()))
+            
+            if (bLuaUserData.IsRegistered(_instance, _object.GetType()))
             {
                 bLuaValue ud = bLuaValue.CreateUserData(_instance, _object);
-                PushStack(_instance, ud);
+                PushStack(_state, ud);
                 return;
             }
 
-            LuaLibAPI.lua_checkstack(_instance.state, 1);
+            LuaLibAPI.lua_checkstack(_state, 1);
 
             switch (_object)
             {
                 case int objectInt:
-                    LuaLibAPI.lua_pushinteger(_instance.state, objectInt);
+                    LuaLibAPI.lua_pushinteger(_state, objectInt);
                     break;
                 case double objectDouble:
-                    LuaLibAPI.lua_pushnumber(_instance.state, objectDouble);
+                    LuaLibAPI.lua_pushnumber(_state, objectDouble);
                     break;
                 case float objectFloat:
-                    LuaLibAPI.lua_pushnumber(_instance.state, objectFloat);
+                    LuaLibAPI.lua_pushnumber(_state, objectFloat);
                     break;
                 case bool objectBool:
-                    LuaLibAPI.lua_pushboolean(_instance.state, objectBool ? 1 : 0);
+                    LuaLibAPI.lua_pushboolean(_state, objectBool ? 1 : 0);
                     break;
                 case string objectString:
-                    PushString(_instance, objectString);
+                    LuaLibAPI.lua_pushstring(_state, objectString);
                     break;
                 case LuaCFunction objectFunction:
-                    LuaPushCFunction(_instance, objectFunction);
+                    LuaPushCFunction(_instance, _state, objectFunction);
                     break;
                 case GlobalMethodCallInfo objectInfo:
-                    PushClosure(_instance, objectInfo);
+                    PushClosure(_instance, _state, objectInfo);
                     break;
                 case MulticastDelegate objectDelegate: // Func<> and Action<>
-                    PushClosure(_instance, objectDelegate);
+                    PushClosure(_instance, _state, objectDelegate);
                     break;
                 default:
-                    LuaLibAPI.lua_pushnil(_instance.state);
+                    LuaLibAPI.lua_pushnil(_state);
                     _instance.ErrorFromCSharp($"{bLuaError.error_unrecognizedStackPush}{_object.GetType()}");
                     break;
             }
@@ -289,15 +307,19 @@ namespace bLua.NativeLua
 
         public static int PushStack(bLuaInstance _instance, bLuaValue _value)
         {
-            LuaLibAPI.lua_checkstack(_instance.state, 1);
+            return PushStack(_instance.state, _value);
+        }
+        public static int PushStack(IntPtr _state, bLuaValue _value)
+        {
+            LuaLibAPI.lua_checkstack(_state, 1);
 
             if (_value == null)
             {
-                PushNil(_instance);
+                PushNil(_state);
                 return (int)DataType.Nil;
             }
 
-            return LuaLibAPI.lua_rawgeti(_instance.state, LUA_REGISTRYINDEX, _value.referenceID);
+            return LuaLibAPI.lua_rawgeti(_state, LUA_REGISTRYINDEX, _value.referenceID);
         }
 #endregion // Push (Stack)
 
@@ -307,6 +329,13 @@ namespace bLua.NativeLua
             LuaLibAPI.lua_settop(_state, -(n) - 1);
         }
 
+        public static IntPtr PopStackIntoPointer(bLuaInstance _instance)
+        {
+            IntPtr pointer = LuaLibAPI.lua_topointer(_instance.state, 1);
+            LuaPop(_instance.state, 1);
+            return pointer;
+        }
+        
         public static bLuaValue PopStackIntoValue(bLuaInstance _instance)
         {
             int t = LuaLibAPI.lua_type(_instance.state, -1);
@@ -609,16 +638,415 @@ namespace bLua.NativeLua
             return LuaLibAPI.lua_yieldk(_instance.state, _results, IntPtr.Zero, IntPtr.Zero);
         }
 
-        public static int Resume(bLuaInstance _instance, int _results)
+        public static LuaThreadStatus Resume(IntPtr _state, IntPtr _instigator, int _nargs)
         {
-            int status = LuaLibAPI.lua_resume(_instance.state, IntPtr.Zero, 0, out int nResults);
-            return nResults;
+            return (LuaThreadStatus)LuaLibAPI.lua_resume(_state, _instigator, _nargs, out int nResults);
         }
 
         public static void PushThread(bLuaInstance _instance)
         {
             LuaLibAPI.lua_pushthread(_instance.state);
         }
+
+        public static IntPtr NewThread(bLuaInstance _instance)
+        {
+            return LuaLibAPI.lua_newthread(_instance.state);
+        }
 #endregion // Coroutines
+
+#region MonoPInvokeCallback
+        [MonoPInvokeCallback]
+        public static int CallGlobalMethod(IntPtr _state)
+        {
+            IntPtr mainThreadState = GetMainThread(_state);
+            bLuaInstance mainThreadInstance = bLuaInstance.GetInstanceByState(mainThreadState);
+
+            var stateBack = mainThreadInstance.state;
+            try
+            {
+                mainThreadInstance.state = _state;
+
+                int stackSize = LuaLibAPI.lua_gettop(_state);
+
+                int n = LuaLibAPI.lua_tointegerx(_state, UpValueIndex(1), IntPtr.Zero);
+
+                if (n < 0 || n >= mainThreadInstance.registeredMethods.Count)
+                {
+                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_invalidMethodIndex}{n}");
+                    return 0;
+                }
+
+                MethodCallInfo methodCallInfo = mainThreadInstance.registeredMethods[n];
+                GlobalMethodCallInfo info = methodCallInfo as GlobalMethodCallInfo;
+
+                if (info == null)
+                {
+                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_invalidMethodIndex}{n}");
+                    return 0;
+                }
+                
+                object[] parms = null;
+                int parmsIndex = 0;
+
+                int parametersLength = info.argTypes.Length;
+                if (parametersLength > 0 && info.argTypes[parametersLength - 1] == MethodCallInfo.ParamType.Params)
+                {
+                    parametersLength--;
+                    if (stackSize > parametersLength)
+                    {
+                        parms = new object[(stackSize) - parametersLength];
+                        parmsIndex = parms.Length - 1;
+                    }
+                }
+
+                object[] args = new object[info.argTypes.Length];
+                int argIndex = args.Length - 1;
+
+                // Set the last args index to be the parameters array
+                if (parms != null)
+                {
+                    args[argIndex--] = parms;
+                }
+
+                while (argIndex > stackSize - 1)
+                {
+                    // Backfill any arguments with defaults.
+                    args[argIndex] = info.defaultArgs[argIndex];
+                    --argIndex;
+                }
+                while (stackSize - 1 > argIndex)
+                {
+                    // Backfill the parameters with values from the Lua stack
+                    if (parms != null)
+                    {
+                        parms[parmsIndex--] = PopStackIntoObject(mainThreadInstance);
+                    }
+                    else
+                    {
+                        PopStack(mainThreadInstance);
+                    }
+                    --stackSize;
+                }
+
+                while (stackSize > 0)
+                {
+                    args[argIndex] = bLuaUserData.PopStackIntoParamType(mainThreadInstance, info.argTypes[argIndex]);
+
+                    --stackSize;
+                    --argIndex;
+                }
+
+                object result = info.methodInfo.Invoke(info.objectInstance, args);
+
+                bLuaUserData.PushReturnTypeOntoStack(mainThreadInstance, info.returnType, result);
+                return 1;
+
+            }
+            catch (Exception e)
+            {
+                mainThreadInstance.ErrorFromCSharp(e, bLuaError.error_callingDelegate);
+                return 0;
+            }
+            finally
+            {
+                mainThreadInstance.state = stateBack;
+            }
+        }
+
+        [MonoPInvokeCallback]
+        public static int CallDelegate(IntPtr _state)
+        {
+            IntPtr mainThreadState = GetMainThread(_state);
+            bLuaInstance mainThreadInstance = bLuaInstance.GetInstanceByState(mainThreadState);
+
+            var stateBack = mainThreadInstance.state;
+            try
+            {
+                mainThreadInstance.state = _state;
+
+                int stackSize = LuaLibAPI.lua_gettop(_state);
+
+                int n = LuaLibAPI.lua_tointegerx(_state, UpValueIndex(1), IntPtr.Zero);
+
+                if (n < 0 || n >= mainThreadInstance.registeredMethods.Count)
+                {
+                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_invalidMethodIndex}{n}");
+                    return 0;
+                }
+
+                MethodCallInfo methodCallInfo = mainThreadInstance.registeredMethods[n];
+                DelegateCallInfo info = methodCallInfo as DelegateCallInfo;
+
+                if (info == null)
+                {
+                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_invalidMethodIndex}{n}");
+                    return 0;
+                }
+                
+                object[] parms = null;
+                int parmsIndex = 0;
+
+                int parametersLength = info.argTypes.Length;
+                if (parametersLength > 0 && info.argTypes[parametersLength - 1] == MethodCallInfo.ParamType.Params)
+                {
+                    parametersLength--;
+                    if (stackSize > parametersLength)
+                    {
+                        parms = new object[(stackSize) - parametersLength];
+                        parmsIndex = parms.Length - 1;
+                    }
+                }
+
+                object[] args = new object[info.argTypes.Length];
+                int argIndex = args.Length - 1;
+
+                // Set the last args index to be the parameters array
+                if (parms != null)
+                {
+                    args[argIndex--] = parms;
+                }
+
+                while (argIndex > stackSize - 1)
+                {
+                    // Backfill any arguments with defaults.
+                    args[argIndex] = info.defaultArgs[argIndex];
+                    --argIndex;
+                }
+                while (stackSize - 1 > argIndex)
+                {
+                    // Backfill the parameters with values from the Lua stack
+                    if (parms != null)
+                    {
+                        parms[parmsIndex--] = PopStackIntoObject(mainThreadInstance);
+                    }
+                    else
+                    {
+                        PopStack(mainThreadInstance);
+                    }
+                    --stackSize;
+                }
+
+                while (stackSize > 0)
+                {
+                    args[argIndex] = bLuaUserData.PopStackIntoParamType(mainThreadInstance, info.argTypes[argIndex]);
+
+                    --stackSize;
+                    --argIndex;
+                }
+
+                object result = info.multicastDelegate.DynamicInvoke(args);
+
+                bLuaUserData.PushReturnTypeOntoStack(mainThreadInstance, info.returnType, result);
+                return 1;
+
+            }
+            catch (Exception e)
+            {
+                mainThreadInstance.ErrorFromCSharp(e, bLuaError.error_callingDelegate);
+                return 0;
+            }
+            finally
+            {
+                mainThreadInstance.state = stateBack;
+            }
+        }
+
+        [MonoPInvokeCallback]
+        public static int CallUserDataFunction(IntPtr _state)
+        {
+            IntPtr mainThreadState = GetMainThread(_state);
+            bLuaInstance mainThreadInstance = bLuaInstance.GetInstanceByState(mainThreadState);
+
+            var stateBack = mainThreadInstance.state;
+            try
+            {
+                mainThreadInstance.state = _state;
+
+                int stackSize = LuaLibAPI.lua_gettop(_state);
+                if (stackSize == 0 || LuaLibAPI.lua_type(_state, 1) != (int)DataType.UserData)
+                {
+                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_objectNotProvided}");
+                    return 0;
+                }
+
+                int n = LuaLibAPI.lua_tointegerx(_state, UpValueIndex(1), IntPtr.Zero);
+
+                if (n < 0 || n >= mainThreadInstance.registeredMethods.Count)
+                {
+                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_invalidMethodIndex}{n}");
+                    return 0;
+                }
+
+                MethodCallInfo info = mainThreadInstance.registeredMethods[n];
+
+                object[] parms = null;
+                int parmsIndex = 0;
+
+                int len = info.argTypes.Length;
+                if (len > 0 && info.argTypes[len - 1] == MethodCallInfo.ParamType.Params)
+                {
+                    len--;
+                    if (stackSize - 1 > len)
+                    {
+                        parms = new object[(stackSize - 1) - len];
+                        parmsIndex = parms.Length - 1;
+                    }
+                }
+
+                object[] args = new object[info.argTypes.Length];
+                int argIndex = args.Length - 1;
+
+                if (parms != null)
+                {
+                    args[argIndex--] = parms;
+                }
+
+                while (argIndex > stackSize - 2)
+                {
+                    // Backfill any arguments with defaults.
+                    args[argIndex] = info.defaultArgs[argIndex];
+                    --argIndex;
+                }
+                while (stackSize - 2 > argIndex)
+                {
+                    if (parms != null)
+                    {
+                        parms[parmsIndex--] = PopStackIntoObject(mainThreadInstance);
+                    }
+                    else
+                    {
+                        PopStack(mainThreadInstance);
+                    }
+                    --stackSize;
+                }
+
+                while (stackSize > 1)
+                {
+                    args[argIndex] = bLuaUserData.PopStackIntoParamType(mainThreadInstance, info.argTypes[argIndex]);
+
+                    --stackSize;
+                    --argIndex;
+                }
+
+                if (LuaLibAPI.lua_gettop(_state) < 1)
+                {
+                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_stackIsEmpty}");
+                    return 0;
+                }
+
+                int t = LuaLibAPI.lua_type(_state, 1);
+                if (t != (int)DataType.UserData)
+                {
+                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_objectIsNotUserdata}{(DataType)t}");
+                    return 0;
+                }
+
+                LuaLibAPI.lua_checkstack(_state, 1);
+                int res = LuaLibAPI.lua_getiuservalue(_state, 1, 1);
+                if (res != (int)DataType.Number)
+                {
+                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_objectNotProvided}");
+                    return 0;
+                }
+                int liveObjectIndex = LuaLibAPI.lua_tointegerx(_state, -1, IntPtr.Zero);
+                object obj = mainThreadInstance.liveObjects[liveObjectIndex];
+
+                object result = info.methodInfo.Invoke(obj, args);
+
+                bLuaUserData.PushReturnTypeOntoStack(mainThreadInstance, info.returnType, result);
+                return 1;
+            }
+            catch (Exception e)
+            {
+                mainThreadInstance.ErrorFromCSharp(e, bLuaError.error_callingFunction);
+                return 0;
+            }
+            finally
+            {
+                mainThreadInstance.state = stateBack;
+            }
+        }
+
+        [MonoPInvokeCallback]
+        public static int CallStaticUserDataFunction(IntPtr _state)
+        {
+            IntPtr mainThreadState = GetMainThread(_state);
+            bLuaInstance mainThreadInstance = bLuaInstance.GetInstanceByState(mainThreadState);
+
+            var stateBack = mainThreadInstance.state;
+            try
+            {
+                mainThreadInstance.state = _state;
+
+                int n = LuaLibAPI.lua_tointegerx(_state, UpValueIndex(1), IntPtr.Zero);
+                MethodCallInfo info = mainThreadInstance.registeredMethods[n];
+
+                int stackSize = LuaLibAPI.lua_gettop(_state);
+
+                object[] parms = null;
+                int parmsIndex = 0;
+
+                int len = info.argTypes.Length;
+                if (len > 0 && info.argTypes[len - 1] == MethodCallInfo.ParamType.Params)
+                {
+                    len--;
+                    if (stackSize > len)
+                    {
+                        parms = new object[stackSize - len];
+                        parmsIndex = parms.Length - 1;
+                    }
+                }
+
+                object[] args = new object[info.argTypes.Length];
+                int argIndex = args.Length - 1;
+
+                if (parms != null)
+                {
+                    args[argIndex--] = parms;
+                }
+
+                while (argIndex > stackSize - 1)
+                {
+                    // Backfill any arguments with nulls.
+                    args[argIndex] = info.defaultArgs[argIndex];
+                    --argIndex;
+                }
+                while (stackSize - 1 > argIndex)
+                {
+                    if (parms != null)
+                    {
+                        parms[parmsIndex--] = PopStackIntoObject(mainThreadInstance);
+                    }
+                    else
+                    {
+                        PopStack(mainThreadInstance);
+                    }
+                    --stackSize;
+                }
+
+                while (stackSize > 0)
+                {
+                    args[argIndex] = bLuaUserData.PopStackIntoParamType(mainThreadInstance, info.argTypes[argIndex]);
+
+                    --stackSize;
+                    --argIndex;
+                }
+
+                object result = info.methodInfo.Invoke(null, args);
+
+                bLuaUserData.PushReturnTypeOntoStack(mainThreadInstance, info.returnType, result);
+                return 1;
+            }
+            catch (Exception e)
+            {
+                mainThreadInstance.ErrorFromCSharp(e, bLuaError.error_callingFunction);
+                return 0;
+            }
+            finally
+            {
+                mainThreadInstance.state = stateBack;
+            }
+        }
+#endregion // MonoPInvokeCallback
     }
 } // bLua.NativeLua namespace

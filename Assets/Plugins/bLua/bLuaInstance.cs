@@ -58,11 +58,11 @@ namespace bLua
         /// programs do not crash) and therefore can compromise otherwise secure code." </remarks>
         /// <summary> The Debug Library (https://www.lua.org/manual/5.4/manual.html#6.10). </summary>
         Debug = 512,
-        /// <summary> Includes `thread.wait(t)`, `thread.spawn(fn)`, and `thread.delay(t, fn)` function(s) that can be used for better threading and coroutine
+        /// <summary> Includes `thread.wait(t)` and `thread.spawn(fn)` function(s) that can be used for better threading and coroutine
         /// control in Lua. NOTE: Feature.Coroutines needs to be enabled for this feature to work. </summary>
         ThreadMacros = 1024,
-        /// <summary> Includes `print(s)` function(s) as globals. </summary>
-        HelperMacros = 2048,
+        /// <summary> Overrides `print(s)` function(s) with a C# delegate that can be bound to and implemented as desired. </summary>
+        CSharpPrintOverride = 2048,
         /// <remarks> WARNING! This feature is EXPERIMENTAL and may cause errors when accessing userdata methods via '.' or ':'. </remarks>
         /// <remarks> WARNING! This may affect performance based on how often your Lua runs userdata methods. </remarks>
         /// <summary> Makes the syntax sugar `:` optional when calling instance methods on userdata. The symbols `.` and `:` become interchangeable in all cases
@@ -96,7 +96,7 @@ namespace bLua
             | Features.OS
             | Features.Debug
             | Features.ThreadMacros
-            | Features.HelperMacros
+            | Features.CSharpPrintOverride
             | Features.CSharpGarbageCollection;
 
         /// <remarks> WARNING! Some of these features include developer warnings, please review the remarks on individual features. </remarks>
@@ -115,7 +115,7 @@ namespace bLua
             | Features.MathLibrary
             | Features.IO
             | Features.ThreadMacros
-            | Features.HelperMacros
+            | Features.CSharpPrintOverride
             | Features.CSharpGarbageCollection;
 
         /// <summary> Includes basic Lua and bLua features, avoiding ones that could be potentially used maliciously. </summary>
@@ -126,7 +126,7 @@ namespace bLua
             | Features.Tables
             | Features.MathLibrary
             | Features.ThreadMacros
-            | Features.HelperMacros
+            | Features.CSharpPrintOverride
             | Features.CSharpGarbageCollection;
 
         /// <summary> The selected sandbox (set of features) for bLua. </summary>
@@ -137,9 +137,7 @@ namespace bLua
             /// <summary> Always tick at the tickInterval in the settings. </summary>
             AlwaysTick,
             /// <summary> Never tick automatically; use ManualTick() to tick instead. </summary>
-            Manual,
-            /// <summary> Tick at the tickInterval interval in the settings only when there is at least one active coroutines running in the instance. </summary>
-            TickOnlyWhenCoroutinesActive
+            Manual
         }
 
         /// <summary> Controls the ticking behavior. Read summaries of TickBehavior options for more information. </summary>
@@ -196,7 +194,7 @@ namespace bLua
 
         public readonly bLuaSettings settings = new();
 
-        private UnityEvent<string> OnPrint = new();
+        public UnityEvent<bLuaValue[]> OnPrint = new();
 
         /// <summary> Contains the current Lua state (https://www.lua.org/manual/5.4/manual.html#lua_newstate). </summary>
         public IntPtr state;
@@ -225,6 +223,14 @@ namespace bLua
             }
         }
 
+        private const string luaConst_bluaInternalError = "blua_internal_error";
+        private const string luaConst_bluaInternalThreadMacros = "blua_internal_threadMacros";
+        private const string luaConst_bluaInternalTime = "blua_internal_time";
+        private const string luaConst_bluaInternalSpawn = "blua_internal_spawn";
+        private const string luaConst_bluaInternalCollectGarbage = "blua_internal_garbagecollection";
+        private const string luaConst_bluaInternalPrint = "blua_internal_print";
+        private const string luaConst_bluaInternalPrintNew = "blua_internal_printNew";
+        
 
         public bLuaInstance()
         {
@@ -251,7 +257,7 @@ namespace bLua
             }
         }
 
-        #region Initialization
+#region Initialization
         /// <summary> Whether bLua has been initialized. </summary>
         private bool initialized;
         private bool reinitializing;
@@ -269,8 +275,6 @@ namespace bLua
             SceneManager.activeSceneChanged -= OnActiveSceneChanged; // This can be done safely
             SceneManager.activeSceneChanged += OnActiveSceneChanged;
 
-            OnPrint.AddListener(Debug.Log);
-
             // Create a new state for this instance
             state = LuaXLibAPI.luaL_newstate();
             instanceRegistry.Add(state, this);
@@ -281,27 +285,11 @@ namespace bLua
                 bLuaUserData.RegisterAllBLuaUserData(this);
             }
 
-            string callInternalLuaError = @"";
+            string callInternalLuaError = "";
             if (settings.internalVerbosity >= bLuaSettings.InternalErrorVerbosity.Normal)
             {
-                callInternalLuaError = @"blua_internal_error(error, debug.traceback(co))";
-                SetGlobal<Action<string, string>>("blua_internal_error", (e, t) =>
-                {
-                    // Reformat the original error message (which shows a line number etc) to just the error msg, and
-                    // let the error handler grab a full trace and parameterize it properly
-                    string[] splitMessage = e.Split(':');
-                    if (splitMessage.Length >= 3)
-                    {
-                        string messageStartingAfterTrace = "";
-                        for (int i = 2; i < splitMessage.Length; i++)
-                        {
-                            messageStartingAfterTrace += splitMessage[i];
-                        }
-                        e = messageStartingAfterTrace.TrimStart();
-                    }
-
-                    ErrorFromLua(e, t);
-                });
+                callInternalLuaError = $"{luaConst_bluaInternalError}(error, debug.traceback(co))";
+                SetGlobal<Action<string, string>>(luaConst_bluaInternalError, bLuaInternal_ErrorDebug);
 
                 if (!FeatureEnabled(Features.Debug))
                 {
@@ -310,33 +298,11 @@ namespace bLua
             }
             else
             {
-                callInternalLuaError = @"blua_internal_error(error)";
-                SetGlobal<Action<string>>("blua_internal_error", (e) =>
-                {
-                    // Reformat the original error message (which shows a line number etc) to just the error msg, and
-                    // let the error handler grab a full trace and parameterize it properly
-                    string[] splitMessage = e.Split(':');
-                    if (splitMessage.Length >= 3)
-                    {
-                        string messageStartingAfterTrace = "";
-                        for (int i = 2; i < splitMessage.Length; i++)
-                        {
-                            messageStartingAfterTrace += splitMessage[i];
-                        }
-                        e = messageStartingAfterTrace.TrimStart();
-                    }
-
-                    string stackTrace = "";
-                    if (settings.internalVerbosity >= bLuaSettings.InternalErrorVerbosity.Normal)
-                    {
-                        stackTrace = Lua.TraceMessage(this);
-                    }
-
-                    ErrorFromLua(e, stackTrace);
-                });
+                callInternalLuaError = $"{luaConst_bluaInternalError}(error)";
+                SetGlobal<Action<string>>(luaConst_bluaInternalError, bLuaInternal_Error);
             }
 
-            #region Feature Handling
+#region Feature Handling
             if (FeatureEnabled(Features.BasicLibrary))
             {
                 LuaLibAPI.luaopen_base(state);
@@ -344,74 +310,14 @@ namespace bLua
 
             if (FeatureEnabled(Features.Coroutines))
             {
-                SetGlobal<Func<float>>("blua_internal_time", () => {
-#if UNITY_EDITOR
-                    if (!Application.isPlaying)
-                    {
-                        return (float)EditorApplication.timeSinceStartup - Time.time;
-                    }
-
-                    return Time.time;
-#else
-                    return Time.time;
-#endif
-                });
-
                 LuaLibAPI.luaopen_coroutine(state);
                 LuaLibAPI.lua_setglobal(state, "coroutine");
-
+                
                 if (OnTick != null)
                 {
                     OnTick.RemoveListener(TickCoroutines);
                     OnTick.AddListener(TickCoroutines);
                 }
-
-                DoBuffer("blua_internal_builtincoroutines", @"builtin_coroutines = {}");
-                internalLua_callCoroutine = DoBuffer("blua_internal_callcoroutine",
-                    @"return function(fn, a, b, c, d, e, f, g, h)
-                        local co = coroutine.create(fn)
-                        local res, error = coroutine.resume(co, a, b, c, d, e, f, g, h)
-                        if not res then
-                            " + callInternalLuaError + @"
-                        end
-                        if coroutine.status(co) ~= 'dead' then
-                            builtin_coroutines[#builtin_coroutines+1] = co
-                        end
-                    end");
-                internalLua_updateCoroutine = DoBuffer("blua_internal_updatecoroutine",
-                    @"return function()
-                        local allRunning = true
-                        for _,co in ipairs(builtin_coroutines) do
-                            local res, error = coroutine.resume(co)
-                            if not res then
-                                " + callInternalLuaError + @"
-                            end
-                            if coroutine.status(co) == 'dead' then
-                                allRunning = false
-                            end
-                        end
-
-                        if not allRunning then
-                            local new_coroutines = {}
-                            for _,co in ipairs(builtin_coroutines) do
-                                if coroutine.status(co) ~= 'dead' then
-                                    new_coroutines[#new_coroutines+1] = co
-                                end
-                            end
-
-                            builtin_coroutines = new_coroutines
-                        end
-                    end");
-                internalLua_cancelCoroutines = DoBuffer("blua_internal_cancelcoroutines",
-                    @"return function()
-                        for _,co in ipairs(builtin_coroutines) do
-                            local res, error = coroutine.close(co)
-                            if not res then
-                                " + callInternalLuaError + @"
-                            end
-                        end
-                        builtin_coroutines = {}
-                    end");
             }
 
             if (FeatureEnabled(Features.Packages))
@@ -464,56 +370,58 @@ namespace bLua
 
             if (FeatureEnabled(Features.ThreadMacros))
             {
-                DoBuffer("blua_internal_threadmacros",
+                SetGlobal<Func<float>>(luaConst_bluaInternalTime, bLuaInternal_Time);
+                SetGlobal<Func<bLuaValue, bLuaValue[], bLuaValue>>(luaConst_bluaInternalSpawn, bLuaInternal_Spawn);
+                
+                DoBuffer(luaConst_bluaInternalThreadMacros,
                     @$"thread = {"{}"}
 
                     function thread.wait(t)
-                        local startTime = blua_internal_time()
-                        while blua_internal_time() < startTime + t do
+                        local startTime = {luaConst_bluaInternalTime}()
+                        while {luaConst_bluaInternalTime}() < startTime + t do
                             coroutine.yield()
                         end
                     end
 
                     function thread.spawn(fn, a, b, c, d, e, f, g, h)
-                        local co = coroutine.create(fn)
-                        local res, error = coroutine.resume(co, a, b, c, d, e, f, g, h)
-                        if not res then
-                            print(string.format('error in co-routine spawn: %s', error))
-                        end
-                        if coroutine.status(co) ~= 'dead' then
-                            builtin_coroutines[#builtin_coroutines+1] = co
-                        end
-                    end
-
-                    function thread.delay(t, fn)
-                        thread.spawn(function()
-                            thread.wait(t)
-                            fn()
-                        end)
+                        local args = {"{}"}
+                        table.insert(args, a)
+                        table.insert(args, b)
+                        table.insert(args, c)
+                        table.insert(args, d)
+                        table.insert(args, e)
+                        table.insert(args, f)
+                        table.insert(args, g)
+                        table.insert(args, h)
+                        return {luaConst_bluaInternalSpawn}(fn, args)
                     end");
             }
 
-            if (FeatureEnabled(Features.HelperMacros))
+            if (FeatureEnabled(Features.CSharpPrintOverride))
             {
-                SetGlobal<Action<bLuaValue>>("print", (s) =>
-                {
-                    string message = s.CastToString();
-
-                    if (settings.internalVerbosity >= bLuaSettings.InternalErrorVerbosity.Normal)
-                    {
-                        message += Lua.TraceMessage(this);
-                    }
-
-                    OnPrint.Invoke(message);
-                });
+                SetGlobal<Action<bLuaValue[]>>(luaConst_bluaInternalPrintNew, bLuaInternal_Print);
+                
+                DoBuffer(luaConst_bluaInternalPrint,
+                    @$"print = function(a, b, c, d, e, f, g, h)
+                        local args = {"{}"}
+                        table.insert(args, a)
+                        table.insert(args, b)
+                        table.insert(args, c)
+                        table.insert(args, d)
+                        table.insert(args, e)
+                        table.insert(args, f)
+                        table.insert(args, g)
+                        table.insert(args, h)
+                        {luaConst_bluaInternalPrintNew}(args)
+                    end");
             }
 
             if (FeatureEnabled(Features.CSharpGarbageCollection))
             {
-                internalLua_garbageCollection = DoBuffer("blua_internal_garbagecollection", @"return function() collectgarbage() end");
+                internalLua_collectGarbage = DoBuffer(luaConst_bluaInternalCollectGarbage, @"return function() collectgarbage() end");
                 StartGarbageCollecting();
             }
-            #endregion // Feature Handling
+#endregion // Feature Handling
 
             if (settings.tickBehavior != bLuaSettings.TickBehavior.Manual)
             {
@@ -560,9 +468,15 @@ namespace bLua
                 Dispose();
             }
         }
-        #endregion // Initialization
+        
+        /// <summary> Returns true if this instance has the given feature enabled. </summary>
+        public bool FeatureEnabled(Features _feature)
+        {
+            return ((Features)(int)settings.features).HasFlag(_feature);
+        }
+#endregion // Initialization
 
-        #region Tick
+#region Tick
         /// <summary> This event is called whenever bLua ticks. Allows for bLua features (or developers) to listen for when ticking takes place. </summary>
         public UnityEvent OnTick = new();
 
@@ -591,8 +505,7 @@ namespace bLua
             while (!requestStopTicking
                 && initialized)
             {
-                if (settings.tickBehavior != bLuaSettings.TickBehavior.TickOnlyWhenCoroutinesActive
-                    || (settings.tickBehavior == bLuaSettings.TickBehavior.TickOnlyWhenCoroutinesActive && runningCoroutines > 0))
+                if (settings.tickBehavior == bLuaSettings.TickBehavior.AlwaysTick)
                 {
                     InternalTick();
                 }
@@ -626,69 +539,96 @@ namespace bLua
         {
             requestStopTicking = true;
         }
-        #endregion // Tick
+#endregion // Tick
         
-        #region Coroutines
-        private const string internalLua_trackedCoroutines = "tracked_coroutines";
+#region Coroutines
+        private List<LuaCoroutine> coroutines = new();
         
-        private bLuaValue internalLua_callCoroutine;
-        private bLuaValue internalLua_updateCoroutine;
-        private bLuaValue internalLua_cancelCoroutines;
-
-        private int coroutineID;
-
-
+        
         private void TickCoroutines()
         {
             using (Lua.profile_luaCo.Auto())
             {
-                Call(internalLua_updateCoroutine);
+                foreach (LuaCoroutine coroutine in coroutines.ToArray())
+                {
+                    LuaThreadStatus threadStatus = ResumeCoroutine(new bLuaValue(this, coroutine.refId));
+
+                    if (threadStatus != LuaThreadStatus.LUA_YIELD)
+                    {
+                        // Remove coroutines that have completed, are dead, or in case of errors
+                        Lua.Unreference(this, coroutine.refId);
+                        coroutines.Remove(coroutine);
+                    }
+                }
             }
         }
 
-        private int runningCoroutines
-        {
-            get
-            {
-                LuaLibAPI.lua_getglobal(state, internalLua_trackedCoroutines);
-                int len = (int)LuaLibAPI.lua_rawlen(state, -1);
-                Lua.PopStack(this);
-                return len;
-            }
-        }
-
-        public void CallCoroutine(bLuaValue _fn, params object[] _args)
+        public bLuaValue CallCoroutine(bLuaValue _fn, params object[] _args)
         {
             if (!FeatureEnabled(Features.Coroutines))
             {
-                Debug.LogError("Can't use CallCoroutine when the Coroutines feature is disabled. Using Call instead.");
+                Debug.LogError($"Can't use {nameof(CallCoroutine)} when the {nameof(Features.Coroutines)} feature is disabled. Using {nameof(Call)} instead, and returning null.");
 
                 Call(_fn, _args);
-                return;
+                return null;
             }
 
-            int nargs = _args != null ? _args.Length : 0;
+            IntPtr coroutineState = Lua.NewThread(this); // Create a new thread
 
-            object[] a = new object[nargs + 1];
-            a[0] = _fn;
-            if (_args != null
-                && nargs > 0)
+            // Copy the coroutine thread and pop a reference
+            LuaLibAPI.lua_pushvalue(state, -1);
+            int coroutineRefId = LuaXLibAPI.luaL_ref(state, Lua.LUA_REGISTRYINDEX);
+            
+            Lua.PushStack(state, _fn); // Push the function we want to call to the main stack
+            LuaLibAPI.lua_xmove(state, coroutineState, 1); // Move the function to the coroutine state
+            
+            // Push arguments to the coroutine state
+            if (_args != null)
             {
-                for (int i = 0; i != _args.Length; ++i)
+                foreach (object arg in _args)
                 {
-                    a[i + 1] = _args[i];
+                    Lua.PushOntoStack(this, coroutineState, arg);
                 }
             }
+            
+            // Track the created coroutine
+            LuaCoroutine coroutine = new LuaCoroutine()
+            {
+                state = coroutineState,
+                refId = coroutineRefId
+            };
+            coroutines.Add(coroutine);
+            
+            // Resume the coroutine that was created
+            bLuaValue coroutineValue = new bLuaValue(this, coroutineRefId);
+            ResumeCoroutine(coroutineValue, _args != null ? _args.Length : 0);
 
-            Call(internalLua_callCoroutine, a);
+            return coroutineValue;
         }
-        #endregion // Coroutines
 
-        #region C# Garbage Collection
+        public LuaThreadStatus ResumeCoroutine(bLuaValue _coroutine, int _nargs = 0)
+        {
+            if (_coroutine == null)
+            {
+                Debug.LogError("Failed to resume coroutine because it was null.");
+                return LuaThreadStatus.LUA_ERRRUN;
+            }
+            
+            LuaCoroutine luaCoroutine = coroutines.Find(c => c.refId == _coroutine.referenceID);
+            if (luaCoroutine == null)
+            {
+                Debug.LogError("Failed to resume coroutine because it was not tracked by the bLua scheduler.");
+                return LuaThreadStatus.LUA_ERRRUN;
+            }
 
+            return Lua.Resume(luaCoroutine.state, state, _nargs);
+        }
+#endregion // Coroutines
+
+#region C# Garbage Collection
         private ConcurrentQueue<int> deleteQueue = new();
 
-        private bLuaValue internalLua_garbageCollection;
+        private bLuaValue internalLua_collectGarbage;
 
         private bool garbageCollecting;
         private bool requestStartGarbageCollecting;
@@ -733,11 +673,11 @@ namespace bLua
 
         private void InternalCollectGarbage()
         {
-            Call(internalLua_garbageCollection);
+            Call(internalLua_collectGarbage);
 
             while (deleteQueue.TryDequeue(out int refid))
             {
-                Lua.DestroyDynValue(this, refid);
+                Lua.Unreference(this, refid);
             }
         }
 
@@ -774,10 +714,9 @@ namespace bLua
         {
             deleteQueue.Enqueue(_referenceID);
         }
+#endregion // C# Garbage Collection
 
-        #endregion // C# Garbage Collection
-
-        #region Globals
+#region Globals
         public bLuaValue GetGlobal(string _key)
         {
             int resType = LuaLibAPI.lua_getglobal(state, _key);
@@ -791,9 +730,9 @@ namespace bLua
             Lua.PushOntoStack(this, _object);
             LuaLibAPI.lua_setglobal(state, _key);
         }
-        #endregion // Globals
+#endregion // Globals
 
-        #region Errors
+#region Errors
         public delegate void LuaErrorDelegate(string _message, string _engineTrace = null);
 
         /// <summary> This delegate is called whenever a Lua Error happens. Allows for bLua features (or developers) to listen. </summary>
@@ -849,7 +788,7 @@ namespace bLua
 
             ErrorInternal(_message, luaStackTrace, _cSharpStackTrace);
         }
-        #endregion // Errors
+#endregion // Errors
 
         /// <summary> Loads a string of Lua code and runs it. </summary>
         /// <param name="_code">The string of code to run.</param>
@@ -975,408 +914,81 @@ namespace bLua
             return result;
         }
 
-        /// <summary> Returns true if this instance's sandbox has the passed feature enabled. </summary>
-        public bool FeatureEnabled(Features _feature)
+#region C Functions called from Lua
+        public void bLuaInternal_Error(string e)
         {
-            return ((Features)(int)settings.features).HasFlag(_feature);
+            // Reformat the original error message (which shows a line number etc) to just the error msg, and
+            // let the error handler grab a full trace and parameterize it properly
+            string[] splitMessage = e.Split(':');
+            if (splitMessage.Length >= 3)
+            {
+                string messageStartingAfterTrace = "";
+                for (int i = 2; i < splitMessage.Length; i++)
+                {
+                    messageStartingAfterTrace += splitMessage[i];
+                }
+                e = messageStartingAfterTrace.TrimStart();
+            }
+
+            string stackTrace = "";
+            if (settings.internalVerbosity >= bLuaSettings.InternalErrorVerbosity.Normal)
+            {
+                stackTrace = Lua.TraceMessage(this);
+            }
+
+            ErrorFromLua(e, stackTrace);
         }
 
-        #region C Functions called from Lua
-        [MonoPInvokeCallback]
-        public static int CallGlobalMethod(IntPtr _state)
+        public void bLuaInternal_ErrorDebug(string e, string t)
         {
-            IntPtr mainThreadState = Lua.GetMainThread(_state);
-            bLuaInstance mainThreadInstance = GetInstanceByState(mainThreadState);
-
-            var stateBack = mainThreadInstance.state;
-            try
+            // Reformat the original error message (which shows a line number etc) to just the error msg, and
+            // let the error handler grab a full trace and parameterize it properly
+            string[] splitMessage = e.Split(':');
+            if (splitMessage.Length >= 3)
             {
-                mainThreadInstance.state = _state;
-
-                int stackSize = LuaLibAPI.lua_gettop(_state);
-
-                int n = LuaLibAPI.lua_tointegerx(_state, Lua.UpValueIndex(1), IntPtr.Zero);
-
-                if (n < 0 || n >= mainThreadInstance.registeredMethods.Count)
+                string messageStartingAfterTrace = "";
+                for (int i = 2; i < splitMessage.Length; i++)
                 {
-                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_invalidMethodIndex}{n}");
-                    return 0;
+                    messageStartingAfterTrace += splitMessage[i];
                 }
-
-                MethodCallInfo methodCallInfo = mainThreadInstance.registeredMethods[n];
-                GlobalMethodCallInfo info = methodCallInfo as GlobalMethodCallInfo;
-
-                if (info == null)
-                {
-                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_invalidMethodIndex}{n}");
-                    return 0;
-                }
-                
-                object[] parms = null;
-                int parmsIndex = 0;
-
-                int parametersLength = info.argTypes.Length;
-                if (parametersLength > 0 && info.argTypes[parametersLength - 1] == MethodCallInfo.ParamType.Params)
-                {
-                    parametersLength--;
-                    if (stackSize > parametersLength)
-                    {
-                        parms = new object[(stackSize) - parametersLength];
-                        parmsIndex = parms.Length - 1;
-                    }
-                }
-
-                object[] args = new object[info.argTypes.Length];
-                int argIndex = args.Length - 1;
-
-                // Set the last args index to be the parameters array
-                if (parms != null)
-                {
-                    args[argIndex--] = parms;
-                }
-
-                while (argIndex > stackSize - 1)
-                {
-                    // Backfill any arguments with defaults.
-                    args[argIndex] = info.defaultArgs[argIndex];
-                    --argIndex;
-                }
-                while (stackSize - 1 > argIndex)
-                {
-                    // Backfill the parameters with values from the Lua stack
-                    if (parms != null)
-                    {
-                        parms[parmsIndex--] = Lua.PopStackIntoObject(mainThreadInstance);
-                    }
-                    else
-                    {
-                        Lua.PopStack(mainThreadInstance);
-                    }
-                    --stackSize;
-                }
-
-                while (stackSize > 0)
-                {
-                    args[argIndex] = bLuaUserData.PopStackIntoParamType(mainThreadInstance, info.argTypes[argIndex]);
-
-                    --stackSize;
-                    --argIndex;
-                }
-
-                object result = info.methodInfo.Invoke(info.objectInstance, args);
-
-                bLuaUserData.PushReturnTypeOntoStack(mainThreadInstance, info.returnType, result);
-                return 1;
-
+                e = messageStartingAfterTrace.TrimStart();
             }
-            catch (Exception e)
-            {
-                mainThreadInstance.ErrorFromCSharp(e, bLuaError.error_callingDelegate);
-                return 0;
-            }
-            finally
-            {
-                mainThreadInstance.state = stateBack;
-            }
+
+            ErrorFromLua(e, t);
         }
-
-        [MonoPInvokeCallback]
-        public static int CallDelegate(IntPtr _state)
-        {
-            IntPtr mainThreadState = Lua.GetMainThread(_state);
-            bLuaInstance mainThreadInstance = GetInstanceByState(mainThreadState);
-
-            var stateBack = mainThreadInstance.state;
-            try
-            {
-                mainThreadInstance.state = _state;
-
-                int stackSize = LuaLibAPI.lua_gettop(_state);
-
-                int n = LuaLibAPI.lua_tointegerx(_state, Lua.UpValueIndex(1), IntPtr.Zero);
-
-                if (n < 0 || n >= mainThreadInstance.registeredMethods.Count)
-                {
-                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_invalidMethodIndex}{n}");
-                    return 0;
-                }
-
-                MethodCallInfo methodCallInfo = mainThreadInstance.registeredMethods[n];
-                DelegateCallInfo info = methodCallInfo as DelegateCallInfo;
-
-                if (info == null)
-                {
-                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_invalidMethodIndex}{n}");
-                    return 0;
-                }
-                
-                object[] parms = null;
-                int parmsIndex = 0;
-
-                int parametersLength = info.argTypes.Length;
-                if (parametersLength > 0 && info.argTypes[parametersLength - 1] == MethodCallInfo.ParamType.Params)
-                {
-                    parametersLength--;
-                    if (stackSize > parametersLength)
-                    {
-                        parms = new object[(stackSize) - parametersLength];
-                        parmsIndex = parms.Length - 1;
-                    }
-                }
-
-                object[] args = new object[info.argTypes.Length];
-                int argIndex = args.Length - 1;
-
-                // Set the last args index to be the parameters array
-                if (parms != null)
-                {
-                    args[argIndex--] = parms;
-                }
-
-                while (argIndex > stackSize - 1)
-                {
-                    // Backfill any arguments with defaults.
-                    args[argIndex] = info.defaultArgs[argIndex];
-                    --argIndex;
-                }
-                while (stackSize - 1 > argIndex)
-                {
-                    // Backfill the parameters with values from the Lua stack
-                    if (parms != null)
-                    {
-                        parms[parmsIndex--] = Lua.PopStackIntoObject(mainThreadInstance);
-                    }
-                    else
-                    {
-                        Lua.PopStack(mainThreadInstance);
-                    }
-                    --stackSize;
-                }
-
-                while (stackSize > 0)
-                {
-                    args[argIndex] = bLuaUserData.PopStackIntoParamType(mainThreadInstance, info.argTypes[argIndex]);
-
-                    --stackSize;
-                    --argIndex;
-                }
-
-                object result = info.multicastDelegate.DynamicInvoke(args);
-
-                bLuaUserData.PushReturnTypeOntoStack(mainThreadInstance, info.returnType, result);
-                return 1;
-
-            }
-            catch (Exception e)
-            {
-                mainThreadInstance.ErrorFromCSharp(e, bLuaError.error_callingDelegate);
-                return 0;
-            }
-            finally
-            {
-                mainThreadInstance.state = stateBack;
-            }
-        }
-
-        [MonoPInvokeCallback]
-        public static int CallUserDataFunction(IntPtr _state)
-        {
-            IntPtr mainThreadState = Lua.GetMainThread(_state);
-            bLuaInstance mainThreadInstance = GetInstanceByState(mainThreadState);
-
-            var stateBack = mainThreadInstance.state;
-            try
-            {
-                mainThreadInstance.state = _state;
-
-                int stackSize = LuaLibAPI.lua_gettop(_state);
-                if (stackSize == 0 || LuaLibAPI.lua_type(_state, 1) != (int)DataType.UserData)
-                {
-                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_objectNotProvided}");
-                    return 0;
-                }
-
-                int n = LuaLibAPI.lua_tointegerx(_state, Lua.UpValueIndex(1), IntPtr.Zero);
-
-                if (n < 0 || n >= mainThreadInstance.registeredMethods.Count)
-                {
-                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_invalidMethodIndex}{n}");
-                    return 0;
-                }
-
-                MethodCallInfo info = mainThreadInstance.registeredMethods[n];
-
-                object[] parms = null;
-                int parmsIndex = 0;
-
-                int len = info.argTypes.Length;
-                if (len > 0 && info.argTypes[len - 1] == MethodCallInfo.ParamType.Params)
-                {
-                    len--;
-                    if (stackSize - 1 > len)
-                    {
-                        parms = new object[(stackSize - 1) - len];
-                        parmsIndex = parms.Length - 1;
-                    }
-                }
-
-                object[] args = new object[info.argTypes.Length];
-                int argIndex = args.Length - 1;
-
-                if (parms != null)
-                {
-                    args[argIndex--] = parms;
-                }
-
-                while (argIndex > stackSize - 2)
-                {
-                    // Backfill any arguments with defaults.
-                    args[argIndex] = info.defaultArgs[argIndex];
-                    --argIndex;
-                }
-                while (stackSize - 2 > argIndex)
-                {
-                    if (parms != null)
-                    {
-                        parms[parmsIndex--] = Lua.PopStackIntoObject(mainThreadInstance);
-                    }
-                    else
-                    {
-                        Lua.PopStack(mainThreadInstance);
-                    }
-                    --stackSize;
-                }
-
-                while (stackSize > 1)
-                {
-                    args[argIndex] = bLuaUserData.PopStackIntoParamType(mainThreadInstance, info.argTypes[argIndex]);
-
-                    --stackSize;
-                    --argIndex;
-                }
-
-                if (LuaLibAPI.lua_gettop(_state) < 1)
-                {
-                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_stackIsEmpty}");
-                    return 0;
-                }
-
-                int t = LuaLibAPI.lua_type(_state, 1);
-                if (t != (int)DataType.UserData)
-                {
-                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_objectIsNotUserdata}{(DataType)t}");
-                    return 0;
-                }
-
-                LuaLibAPI.lua_checkstack(_state, 1);
-                int res = LuaLibAPI.lua_getiuservalue(_state, 1, 1);
-                if (res != (int)DataType.Number)
-                {
-                    mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_objectNotProvided}");
-                    return 0;
-                }
-                int liveObjectIndex = LuaLibAPI.lua_tointegerx(_state, -1, IntPtr.Zero);
-                object obj = mainThreadInstance.liveObjects[liveObjectIndex];
-
-                object result = info.methodInfo.Invoke(obj, args);
-
-                bLuaUserData.PushReturnTypeOntoStack(mainThreadInstance, info.returnType, result);
-                return 1;
-            }
-            catch (Exception e)
-            {
-                mainThreadInstance.ErrorFromCSharp(e, bLuaError.error_callingFunction);
-                return 0;
-            }
-            finally
-            {
-                mainThreadInstance.state = stateBack;
-            }
-        }
-
-        [MonoPInvokeCallback]
-        public static int CallStaticUserDataFunction(IntPtr _state)
-        {
-            IntPtr mainThreadState = Lua.GetMainThread(_state);
-            bLuaInstance mainThreadInstance = GetInstanceByState(mainThreadState);
-
-            var stateBack = mainThreadInstance.state;
-            try
-            {
-                mainThreadInstance.state = _state;
-
-                int n = LuaLibAPI.lua_tointegerx(_state, Lua.UpValueIndex(1), IntPtr.Zero);
-                MethodCallInfo info = mainThreadInstance.registeredMethods[n];
-
-                int stackSize = LuaLibAPI.lua_gettop(_state);
-
-                object[] parms = null;
-                int parmsIndex = 0;
-
-                int len = info.argTypes.Length;
-                if (len > 0 && info.argTypes[len - 1] == MethodCallInfo.ParamType.Params)
-                {
-                    len--;
-                    if (stackSize > len)
-                    {
-                        parms = new object[stackSize - len];
-                        parmsIndex = parms.Length - 1;
-                    }
-                }
-
-                object[] args = new object[info.argTypes.Length];
-                int argIndex = args.Length - 1;
-
-                if (parms != null)
-                {
-                    args[argIndex--] = parms;
-                }
-
-                while (argIndex > stackSize - 1)
-                {
-                    // Backfill any arguments with nulls.
-                    args[argIndex] = info.defaultArgs[argIndex];
-                    --argIndex;
-                }
-                while (stackSize - 1 > argIndex)
-                {
-                    if (parms != null)
-                    {
-                        parms[parmsIndex--] = Lua.PopStackIntoObject(mainThreadInstance);
-                    }
-                    else
-                    {
-                        Lua.PopStack(mainThreadInstance);
-                    }
-                    --stackSize;
-                }
-
-                while (stackSize > 0)
-                {
-                    args[argIndex] = bLuaUserData.PopStackIntoParamType(mainThreadInstance, info.argTypes[argIndex]);
-
-                    --stackSize;
-                    --argIndex;
-                }
-
-                object result = info.methodInfo.Invoke(null, args);
-
-                bLuaUserData.PushReturnTypeOntoStack(mainThreadInstance, info.returnType, result);
-                return 1;
-            }
-            catch (Exception e)
-            {
-                mainThreadInstance.ErrorFromCSharp(e, bLuaError.error_callingFunction);
-                return 0;
-            }
-            finally
-            {
-                mainThreadInstance.state = stateBack;
-            }
-        }
-        #endregion // C Functions called from Lua
         
-        #region Userdata
+        public void bLuaInternal_Print(bLuaValue[] _args)
+        {
+            OnPrint?.Invoke(_args);
+        }
+
+        public float bLuaInternal_Time()
+        {
+#if UNITY_EDITOR
+            if (!Application.isPlaying)
+            {
+                return (float)EditorApplication.timeSinceStartup - Time.time;
+            }
+
+            return Time.time;
+#else
+            return Time.time;
+#endif // UNITY_EDITOR
+        }
+
+        public bLuaValue bLuaInternal_Spawn(bLuaValue _fn, bLuaValue[] _args)
+        {
+            object[] args = new object[_args.Length];
+            for (int i = 0; i < args.Length; i++)
+            {
+                args[i] = _args[i];
+            }
+            
+            return CallCoroutine(_fn, args);
+        }
+#endregion // C Functions called from Lua
+        
+#region Userdata
         /// <summary> Registers all C# types in all assemblies with the [bLuaUserData] attribute as Lua userdata on this particular instance. </summary>
         public void RegisterAllBLuaUserData()
         {
@@ -1389,6 +1001,6 @@ namespace bLua
         {
             bLuaUserData.Register(this, _type);
         }
-        #endregion
+#endregion // Userdata
     }
 } // bLua namespace
