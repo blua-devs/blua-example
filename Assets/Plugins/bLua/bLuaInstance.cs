@@ -551,11 +551,18 @@ namespace bLua
             {
                 foreach (LuaCoroutine coroutine in coroutines.ToArray())
                 {
+                    // If there are any pause flags active, don't attempt to automatically resume the coroutine
+                    if (coroutine.pauseFlags != CoroutinePauseFlag.NONE)
+                    {
+                        continue;
+                    }
+                    
                     LuaThreadStatus threadStatus = ResumeCoroutine(new bLuaValue(this, coroutine.refId));
 
-                    if (threadStatus != LuaThreadStatus.LUA_YIELD)
+                    // Remove coroutines that have completed, are dead, or in case of errors
+                    if (threadStatus != LuaThreadStatus.LUA_OK
+                        && threadStatus != LuaThreadStatus.LUA_YIELD)
                     {
-                        // Remove coroutines that have completed, are dead, or in case of errors
                         Lua.Unreference(this, coroutine.refId);
                         coroutines.Remove(coroutine);
                     }
@@ -621,7 +628,26 @@ namespace bLua
                 return LuaThreadStatus.LUA_ERRRUN;
             }
 
-            return Lua.Resume(luaCoroutine.state, state, _nargs);
+            return Lua.Resume(this, luaCoroutine.state, state, _nargs);
+        }
+
+        public void SetCoroutinePauseFlag(IntPtr _coroutineState, CoroutinePauseFlag _flag, bool _value)
+        {
+            LuaCoroutine coroutine = coroutines.Find(c => c.state == _coroutineState);
+            if (coroutine == null)
+            {
+                Debug.LogError("Failed to set pause flag on coroutine because coroutine couldn't be found.");
+                return;
+            }
+
+            if (_value)
+            {
+                coroutine.pauseFlags |= _flag;
+            }
+            else
+            {
+                coroutine.pauseFlags &= ~_flag;
+            }
         }
 #endregion // Coroutines
 
@@ -915,7 +941,7 @@ namespace bLua
         }
 
 #region C Functions called from Lua
-        public void bLuaInternal_Error(string e)
+        private void bLuaInternal_Error(string e)
         {
             // Reformat the original error message (which shows a line number etc) to just the error msg, and
             // let the error handler grab a full trace and parameterize it properly
@@ -939,7 +965,7 @@ namespace bLua
             ErrorFromLua(e, stackTrace);
         }
 
-        public void bLuaInternal_ErrorDebug(string e, string t)
+        private void bLuaInternal_ErrorDebug(string e, string t)
         {
             // Reformat the original error message (which shows a line number etc) to just the error msg, and
             // let the error handler grab a full trace and parameterize it properly
@@ -957,12 +983,12 @@ namespace bLua
             ErrorFromLua(e, t);
         }
         
-        public void bLuaInternal_Print(bLuaValue[] _args)
+        private void bLuaInternal_Print(bLuaValue[] _args)
         {
             OnPrint?.Invoke(_args);
         }
 
-        public float bLuaInternal_Time()
+        private float bLuaInternal_Time()
         {
 #if UNITY_EDITOR
             if (!Application.isPlaying)
@@ -976,7 +1002,7 @@ namespace bLua
 #endif // UNITY_EDITOR
         }
 
-        public bLuaValue bLuaInternal_Spawn(bLuaValue _fn, bLuaValue[] _args)
+        private bLuaValue bLuaInternal_Spawn(bLuaValue _fn, bLuaValue[] _args)
         {
             object[] args = new object[_args.Length];
             for (int i = 0; i < args.Length; i++)

@@ -29,11 +29,24 @@ namespace bLua.NativeLua
     {
         public int result;
     }
+
+    public struct StateData
+    {
+        public IntPtr state;
+    }
+
+    [Flags]
+    public enum CoroutinePauseFlag
+    {
+        NONE = 0,
+        BLUA_CSHARPASYNCAWAIT = 1,
+    }
     
-    class LuaCoroutine
+    public class LuaCoroutine
     {
         public IntPtr state;
         public int refId;
+        public CoroutinePauseFlag pauseFlags;
     }
     
     public struct StringCacheEntry
@@ -157,6 +170,7 @@ namespace bLua.NativeLua
         {
             PushNil(_instance.state);
         }
+        
         public static void PushNil(IntPtr _state)
         {
             LuaLibAPI.lua_checkstack(_state, 1);
@@ -192,27 +206,37 @@ namespace bLua.NativeLua
             MethodInfo methodInfo = _func.Method;
 
             ParameterInfo[] methodParams = methodInfo.GetParameters();
-            MethodCallInfo.ParamType[] argTypes = new MethodCallInfo.ParamType[methodParams.Length];
-            object[] defaultArgs = new object[methodParams.Length];
+            List<MethodCallInfo.ParamType> argTypes = new();
+            List<object> defaultArgs = new();
             for (int i = 0; i != methodParams.Length; ++i)
             {
-                argTypes[i] = bLuaUserData.SystemTypeToParamType(_instance, methodParams[i].ParameterType);
-                if (i == methodParams.Length - 1 && methodParams[i].GetCustomAttribute(typeof(ParamArrayAttribute)) != null)
+                if (methodParams[i].GetCustomAttribute(typeof(bLuaStateParam)) != null
+                    && methodParams[i].ParameterType == typeof(StateData))
                 {
-                    argTypes[i] = MethodCallInfo.ParamType.Params;
+                    continue;
+                }
+
+                MethodCallInfo.ParamType paramType = bLuaUserData.SystemTypeToParamType(_instance, methodParams[i].ParameterType);
+                if (methodParams[i].GetCustomAttribute(typeof(ParamArrayAttribute)) != null)
+                {
+                    argTypes.Add(MethodCallInfo.ParamType.Params);
+                }
+                else
+                {
+                    argTypes.Add(paramType);
                 }
 
                 if (methodParams[i].HasDefaultValue)
                 {
-                    defaultArgs[i] = methodParams[i].DefaultValue;
+                    defaultArgs.Add(methodParams[i].DefaultValue);
                 }
-                else if (argTypes[i] == MethodCallInfo.ParamType.LuaValue)
+                else if (paramType == MethodCallInfo.ParamType.LuaValue)
                 {
-                    defaultArgs[i] = bLuaValue.Nil;
+                    defaultArgs.Add(bLuaValue.Nil);
                 }
                 else
                 {
-                    defaultArgs[i] = null;
+                    defaultArgs.Add(null);
                 }
             }
 
@@ -223,8 +247,8 @@ namespace bLua.NativeLua
             {
                 methodInfo = methodInfo,
                 returnType = bLuaUserData.SystemTypeToParamType(_instance, methodInfo.ReturnType),
-                argTypes = argTypes,
-                defaultArgs = defaultArgs,
+                argTypes = argTypes.ToArray(),
+                defaultArgs = defaultArgs.ToArray(),
                 closure = bLuaValue.CreateClosure(_instance, fn, upvalues),
                 multicastDelegate = _func
             };
@@ -634,14 +658,31 @@ namespace bLua.NativeLua
             return LuaLibAPI.lua_isyieldable(_state) == 1;
         }
 
-        public static LuaThreadStatus Yield(IntPtr _state, int _results)
+        public static LuaThreadStatus Yield(bLuaInstance _instance, IntPtr _state, int _results)
         {
             return (LuaThreadStatus)LuaLibAPI.lua_yieldk(_state, _results, IntPtr.Zero, IntPtr.Zero);
         }
 
-        public static LuaThreadStatus Resume(IntPtr _state, IntPtr _instigator, int _nargs)
+        public static LuaThreadStatus Resume(bLuaInstance _instance, IntPtr _state, IntPtr _instigator, int _nargs)
         {
-            return (LuaThreadStatus)LuaLibAPI.lua_resume(_state, _instigator, _nargs, out int nResults);
+            LuaThreadStatus preResumeStatus = (LuaThreadStatus)LuaLibAPI.lua_status(_state);
+            if (preResumeStatus != LuaThreadStatus.LUA_OK
+                && preResumeStatus != LuaThreadStatus.LUA_YIELD)
+            {
+                return preResumeStatus;
+            }
+            
+            LuaThreadStatus postResumeStatus = (LuaThreadStatus)LuaLibAPI.lua_resume(_state, _instigator, _nargs, out int nResults);
+
+            if (postResumeStatus != LuaThreadStatus.LUA_OK
+                && postResumeStatus != LuaThreadStatus.LUA_YIELD)
+            {
+                string error = GetString(_state, -1);
+                LuaPop(_state, 1);
+                _instance.ErrorFromLua($"{bLuaError.error_inCoroutineResume}", $"{error}");
+            }
+
+            return postResumeStatus;
         }
 
         public static void PushThread(bLuaInstance _instance)
@@ -678,7 +719,7 @@ namespace bLua.NativeLua
                     return 0;
                 }
                 
-                return (int)InvokeCSharpMethod(_state, mainThreadInstance, methodCallInfo, null, args);
+                return (int)InvokeCSharpMethod(mainThreadInstance, _state, methodCallInfo, null, args);
             }
             catch (Exception e)
             {
@@ -713,7 +754,7 @@ namespace bLua.NativeLua
                     return 0;
                 }
                 
-                return (int)InvokeCSharpMethod(_state, mainThreadInstance, methodCallInfo, null, args);
+                return (int)InvokeCSharpMethod(mainThreadInstance, _state, methodCallInfo, null, args);
             }
             catch (Exception e)
             {
@@ -760,7 +801,7 @@ namespace bLua.NativeLua
                     return 0;
                 }
                 
-                return (int)InvokeCSharpMethod(_state, mainThreadInstance, info, liveObject, args);
+                return (int)InvokeCSharpMethod(mainThreadInstance, _state, info, liveObject, args);
             }
             catch (Exception e)
             {
@@ -795,7 +836,7 @@ namespace bLua.NativeLua
                     return 0;
                 }
 
-                return (int)InvokeCSharpMethod(_state, mainThreadInstance, info, null, args);
+                return (int)InvokeCSharpMethod(mainThreadInstance, _state, info, null, args);
             }
             catch (Exception e)
             {
@@ -810,16 +851,36 @@ namespace bLua.NativeLua
 #endregion // MonoPInvokeCallback
         
 #region Invocation
-        public static LuaThreadStatus InvokeCSharpMethod(IntPtr _state, bLuaInstance _instance, MethodCallInfo _methodCallInfo, object _liveObject, params object[] _args)
+        public static LuaThreadStatus InvokeCSharpMethod(bLuaInstance _instance, IntPtr _state, MethodCallInfo _methodCallInfo, object _liveObject, params object[] _args)
         {
-            object result = InvokeMethodCallInfo(_methodCallInfo, _liveObject, _args);
-            bLuaUserData.PushReturnTypeOntoStack(_instance, _methodCallInfo.returnType, result);
+            object result = InvokeMethodCallInfo(_methodCallInfo, _liveObject, _state, _args);
+            bLuaUserData.PushReturnTypeOntoStack(_instance, _state, _methodCallInfo.returnType, result);
 
             return LuaThreadStatus.LUA_OK;
         }
 
-        private static object InvokeMethodCallInfo(MethodCallInfo _methodCallInfo, object _liveObject, params object[] _args)
+        private static object InvokeMethodCallInfo(MethodCallInfo _methodCallInfo, object _liveObject, IntPtr _state, params object[] _args)
         {
+            ParameterInfo[] parameterInfos = _methodCallInfo.methodInfo.GetParameters();
+            object[] newArgs = new object[parameterInfos.Length];
+            int consumedOldArgIndex = 0;
+            for (int i = 0; i < parameterInfos.Length; i++)
+            {
+                if (parameterInfos[i].GetCustomAttribute(typeof(bLuaStateParam)) != null
+                    && parameterInfos[i].ParameterType == typeof(StateData))
+                {
+                    newArgs[i] = new StateData()
+                    {
+                        state = _state
+                    };
+                }
+                else
+                {
+                    newArgs[i] = _args[consumedOldArgIndex++];
+                }
+            }
+            _args = newArgs;
+            
             if (_methodCallInfo is DelegateCallInfo delegateCallInfo)
             {
                 return delegateCallInfo.multicastDelegate.DynamicInvoke(_args);

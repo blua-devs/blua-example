@@ -13,7 +13,6 @@ namespace bLua
     [AttributeUsage(AttributeTargets.Method | AttributeTargets.Property | AttributeTargets.Field | AttributeTargets.Constructor)]
     public class bLuaHiddenAttribute : Attribute
     {
-
     }
 
     [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]
@@ -23,6 +22,11 @@ namespace bLua
         /// register a userdata that uses X type before X is registered (ex. bLuaGameObject might be reliant on Vector3
         /// because of the position property). </summary>
         public Type[] reliantUserData;
+    }
+
+    [AttributeUsage(AttributeTargets.Parameter)]
+    public class bLuaStateParam : Attribute
+    {
     }
 
     public class UserDataRegistryEntry
@@ -103,28 +107,33 @@ namespace bLua
 
         public static void PushReturnTypeOntoStack(bLuaInstance _instance, MethodCallInfo.ParamType _returnType, object _result)
         {
+            PushReturnTypeOntoStack(_instance, _instance.state, _returnType, _result);
+        }
+        
+        public static void PushReturnTypeOntoStack(bLuaInstance _instance, IntPtr _state, MethodCallInfo.ParamType _returnType, object _result)
+        {
             switch (_returnType)
             {
                 case MethodCallInfo.ParamType.Void:
-                    Lua.PushNil(_instance);
+                    Lua.PushNil(_state);
                     return;
                 case MethodCallInfo.ParamType.LuaValue:
-                    Lua.PushStack(_instance, _result as bLuaValue);
+                    Lua.PushStack(_state, _result as bLuaValue);
                     return;
                 case MethodCallInfo.ParamType.Bool:
-                    Lua.PushOntoStack(_instance, (bool)_result);
+                    Lua.PushOntoStack(_instance, _state, (bool)_result);
                     return;
                 case MethodCallInfo.ParamType.Int:
-                    Lua.PushOntoStack(_instance, (int)_result);
+                    Lua.PushOntoStack(_instance, _state, (int)_result);
                     return;
                 case MethodCallInfo.ParamType.Float:
-                    Lua.PushOntoStack(_instance, (float)_result);
+                    Lua.PushOntoStack(_instance, _state, (float)_result);
                     return;
                 case MethodCallInfo.ParamType.Double:
-                    Lua.PushOntoStack(_instance, (double)_result);
+                    Lua.PushOntoStack(_instance, _state, (double)_result);
                     return;
                 case MethodCallInfo.ParamType.Str:
-                    Lua.PushOntoStack(_instance, (string)_result);
+                    Lua.PushOntoStack(_instance, _state, (string)_result);
                     return;
                 case MethodCallInfo.ParamType.Array:
                     if (!_result.GetType().IsArray)
@@ -138,7 +147,7 @@ namespace bLua
                         arrayTable.Append(o);
                     }
 
-                    Lua.PushOntoStack(_instance, arrayTable);
+                    Lua.PushOntoStack(_instance, _state, arrayTable);
 
                     return;
                 case MethodCallInfo.ParamType.List:
@@ -153,7 +162,7 @@ namespace bLua
                         listTable.Append(o);
                     }
 
-                    Lua.PushOntoStack(_instance, listTable);
+                    Lua.PushOntoStack(_instance, _state, listTable);
 
                     return;
                 case MethodCallInfo.ParamType.Dictionary:
@@ -168,14 +177,14 @@ namespace bLua
                         dictionaryTable.Set(key, ((IDictionary)_result)[key]);
                     }
 
-                    Lua.PushOntoStack(_instance, dictionaryTable);
+                    Lua.PushOntoStack(_instance, _state, dictionaryTable);
 
                     return;
                 case MethodCallInfo.ParamType.UserDataClass:
-                    PushNewUserData(_instance, _result);
+                    PushNewUserData(_instance, _state, _result);
                     return;
                 default:
-                    Lua.PushNil(_instance);
+                    Lua.PushNil(_state);
                     return;
             }
         }
@@ -243,16 +252,21 @@ namespace bLua
 
         public static void PushNewUserData(bLuaInstance _instance, object _object)
         {
+            PushNewUserData(_instance, _instance.state, _object);
+        }
+        
+        public static void PushNewUserData(bLuaInstance _instance, IntPtr _state, object _object)
+        {
             if (_object == null)
             {
-                Lua.PushNil(_instance);
+                Lua.PushNil(_state);
                 return;
             }
 
             if (_instance.typenameToEntryIndex.TryGetValue(_object.GetType().Name, out int typeIndex) == false)
             {
                 Debug.LogError($"Type {_object.GetType().Name} is not marked as a user data. Register it with `bLuaUserData.Register`, `bLuaInstance.RegisterUserData`, or add the [bLuaUserData] attribute and have your bLuaInstance auto register all bLuaUserData.");
-                Lua.PushNil(_instance);
+                Lua.PushNil(_state);
                 return;
             }
 
@@ -290,9 +304,9 @@ namespace bLua
             }
 
             LuaLibAPI.lua_newuserdatauv(_instance.state, new IntPtr(8), 1);
-            Lua.PushOntoStack(_instance, objIndex);
+            Lua.PushOntoStack(_instance, _state, objIndex);
             LuaLibAPI.lua_setiuservalue(_instance.state, -2, 1);
-            Lua.PushStack(_instance, entry.metatable);
+            Lua.PushStack(_state, entry.metatable);
             LuaLibAPI.lua_setmetatable(_instance.state, -2);
 
             _instance.liveObjects[objIndex] = _object;
@@ -438,28 +452,37 @@ namespace bLua
                     continue;
                 }
 
-                MethodCallInfo.ParamType[] argTypes = new MethodCallInfo.ParamType[methodParams.Length];
-                object[] defaultArgs = new object[methodParams.Length];
+                List<MethodCallInfo.ParamType> argTypes = new();
+                List<object> defaultArgs = new();
                 for (int i = 0; i < methodParams.Length; ++i)
                 {
-                    argTypes[i] = SystemTypeToParamType(_instance, methodParams[i].ParameterType);
+                    if (methodParams[i].GetCustomAttribute(typeof(bLuaStateParam)) != null
+                        && methodParams[i].ParameterType == typeof(StateData))
+                    {
+                        continue;
+                    }
 
+                    MethodCallInfo.ParamType paramType = SystemTypeToParamType(_instance, methodParams[i].ParameterType);
                     if (i == methodParams.Length - 1 && methodParams[i].GetCustomAttribute(typeof(ParamArrayAttribute)) != null)
                     {
-                        argTypes[i] = MethodCallInfo.ParamType.Params;
+                        argTypes.Add(MethodCallInfo.ParamType.Params);
+                    }
+                    else
+                    {
+                        argTypes.Add(paramType);
                     }
 
                     if (methodParams[i].HasDefaultValue)
                     {
-                        defaultArgs[i] = methodParams[i].DefaultValue;
+                        defaultArgs.Add(methodParams[i].DefaultValue);
                     }
-                    else if (argTypes[i] == MethodCallInfo.ParamType.LuaValue)
+                    else if (paramType == MethodCallInfo.ParamType.LuaValue)
                     {
-                        defaultArgs[i] = bLuaValue.Nil;
+                        defaultArgs.Add(bLuaValue.Nil);
                     }
                     else
                     {
-                        defaultArgs[i] = null;
+                        defaultArgs.Add(null);
                     }
                 }
 
@@ -500,8 +523,8 @@ namespace bLua
                 {
                     methodInfo = methodInfo,
                     returnType = returnType,
-                    argTypes = argTypes,
-                    defaultArgs = defaultArgs,
+                    argTypes = argTypes.ToArray(),
+                    defaultArgs = defaultArgs.ToArray(),
                     closure = bLuaValue.CreateClosure(_instance, fn, bLuaValue.CreateNumber(_instance, _instance.registeredMethods.Count)),
                 });
             }
@@ -613,28 +636,37 @@ namespace bLua
                 return null;
             }
 
-            MethodCallInfo.ParamType[] argTypes = new MethodCallInfo.ParamType[methodParams.Length];
-            object[] defaultArgs = new object[methodParams.Length];
+            List<MethodCallInfo.ParamType> argTypes = new();
+            List<object> defaultArgs = new();
             for (int i = 0; i < methodParams.Length; ++i)
             {
-                argTypes[i] = SystemTypeToParamType(_instance, methodParams[i].ParameterType);
+                if (methodParams[i].GetCustomAttribute(typeof(bLuaStateParam)) != null
+                    && methodParams[i].ParameterType == typeof(StateData))
+                {
+                    continue;
+                }
 
+                MethodCallInfo.ParamType paramType = SystemTypeToParamType(_instance, methodParams[i].ParameterType);
                 if (i == methodParams.Length - 1 && methodParams[i].GetCustomAttribute(typeof(ParamArrayAttribute)) != null)
                 {
-                    argTypes[i] = MethodCallInfo.ParamType.Params;
+                    argTypes.Add(MethodCallInfo.ParamType.Params);
+                }
+                else
+                {
+                    argTypes.Add(paramType);
                 }
 
                 if (methodParams[i].HasDefaultValue)
                 {
-                    defaultArgs[i] = methodParams[i].DefaultValue;
+                    defaultArgs.Add(methodParams[i].DefaultValue);
                 }
-                else if (argTypes[i] == MethodCallInfo.ParamType.LuaValue)
+                else if (paramType == MethodCallInfo.ParamType.LuaValue)
                 {
-                    defaultArgs[i] = bLuaValue.Nil;
+                    defaultArgs.Add(bLuaValue.Nil);
                 }
                 else
                 {
-                    defaultArgs[i] = null;
+                    defaultArgs.Add(null);
                 }
             }
 
@@ -644,8 +676,8 @@ namespace bLua
             {
                 methodInfo = _methodInfo,
                 returnType = returnType,
-                argTypes = argTypes,
-                defaultArgs = defaultArgs,
+                argTypes = argTypes.ToArray(),
+                defaultArgs = defaultArgs.ToArray(),
                 objectInstance = _object
             };
 
