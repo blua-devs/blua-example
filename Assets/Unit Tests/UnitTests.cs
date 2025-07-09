@@ -326,7 +326,7 @@ public class UnitTests : MonoBehaviour
 
         using (bLuaValue fn = instance.GetGlobal("testYield"))
         {
-            instance.CallCoroutine(fn, 5);
+            instance.CallAsCoroutine(fn, 5);
         }
     }
 
@@ -361,7 +361,7 @@ public class UnitTests : MonoBehaviour
 
         using (bLuaValue fn = instance.GetGlobal("testMacros"))
         {
-            instance.CallCoroutine(fn, 3);
+            instance.CallAsCoroutine(fn, 3);
         }
     }
 

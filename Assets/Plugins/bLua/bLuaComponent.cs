@@ -70,7 +70,8 @@ public class bLuaComponent : MonoBehaviour
             instance = new bLuaInstance(new bLuaSettings()
             {
                 features = bLuaSettings.SANDBOX_ALL_EXPERIMENTAL,
-                tickBehavior = bLuaSettings.TickBehavior.Manual // We tick the instance on Update
+                tickBehavior = bLuaSettings.TickBehavior.Manual, // We tick the instance on Update
+                coroutineBehaviour = bLuaSettings.CoroutineBehaviour.ResumeOnTick // We resume all coroutines on Tick
             });
             
             // Override print to log in Unity
@@ -159,7 +160,7 @@ public class bLuaComponent : MonoBehaviour
             if (func != null
                 && func.Type == DataType.Function)
             {
-                instance.CallCoroutine(func);
+                instance.CallAsCoroutine(func);
             }
         }
     }

@@ -58,9 +58,11 @@ namespace bLua
         /// programs do not crash) and therefore can compromise otherwise secure code." </remarks>
         /// <summary> The Debug Library (https://www.lua.org/manual/5.4/manual.html#6.10). </summary>
         Debug = 512,
-        /// <summary> Includes `thread.wait(t)` and `thread.spawn(fn)` function(s) that can be used for better threading and coroutine
-        /// control in Lua. NOTE: Feature.Coroutines needs to be enabled for this feature to work. </summary>
-        ThreadMacros = 1024,
+        /// <summary> Includes `coroutine.wait(t)` and `coroutine.spawn(fn, ...)` function(s) that can be used for better coroutine control in Lua.
+        /// coroutine.wait(t) will yield the coroutine it is called in and continue to yield any further resumes until the given duration (in seconds) has passed.
+        /// coroutine.spawn(fn, ...) will create and resume a new coroutine and return it.
+        /// NOTE: Feature.Coroutines needs to be enabled for this feature to work. </summary>
+        CoroutineHelpers = 1024,
         /// <summary> Overrides `print(s)` function(s) with a C# delegate that can be bound to and implemented as desired. </summary>
         CSharpPrintOverride = 2048,
         /// <remarks> WARNING! This feature is EXPERIMENTAL and may cause errors when accessing userdata methods via '.' or ':'. </remarks>
@@ -95,7 +97,7 @@ namespace bLua
             | Features.IO
             | Features.OS
             | Features.Debug
-            | Features.ThreadMacros
+            | Features.CoroutineHelpers
             | Features.CSharpPrintOverride
             | Features.CSharpGarbageCollection;
 
@@ -114,7 +116,7 @@ namespace bLua
             | Features.Tables
             | Features.MathLibrary
             | Features.IO
-            | Features.ThreadMacros
+            | Features.CoroutineHelpers
             | Features.CSharpPrintOverride
             | Features.CSharpGarbageCollection;
 
@@ -125,7 +127,7 @@ namespace bLua
             | Features.UTF8Support
             | Features.Tables
             | Features.MathLibrary
-            | Features.ThreadMacros
+            | Features.CoroutineHelpers
             | Features.CSharpPrintOverride
             | Features.CSharpGarbageCollection;
 
@@ -134,14 +136,14 @@ namespace bLua
 
         public enum TickBehavior
         {
-            /// <summary> Always tick at the tickInterval in the settings. </summary>
-            AlwaysTick,
             /// <summary> Never tick automatically; use ManualTick() to tick instead. </summary>
-            Manual
+            Manual,
+            /// <summary> Always tick at the tickInterval in the settings. </summary>
+            TickAtInterval
         }
 
         /// <summary> Controls the ticking behavior. Read summaries of TickBehavior options for more information. </summary>
-        public TickBehavior tickBehavior = TickBehavior.AlwaysTick;
+        public TickBehavior tickBehavior = TickBehavior.TickAtInterval;
 
         /// <summary> The millisecond delay between bLua ticks. </summary>
         public int tickInterval = 10; // 10 = 100 ticks per second
@@ -160,6 +162,17 @@ namespace bLua
         /// <summary> Controls user data behavior. Read summaries of UserDataBehavior options for more information. </summary>
         public AutoRegisterTypes autoRegisterTypes = AutoRegisterTypes.BLua;
 
+        public enum CoroutineBehaviour
+        {
+            /// <summary> Default native Lua behaviour. Do not automatically resume any coroutines, follow Lua instructions only. </summary>
+            Manual,
+            /// <summary> Automatically resume all coroutines on every Tick. </summary>
+            ResumeOnTick
+        }
+        
+        /// <summary> Controls the behaviour of coroutines and how they yield and resume. </summary>
+        public CoroutineBehaviour coroutineBehaviour = CoroutineBehaviour.Manual;
+        
         public enum InternalErrorVerbosity
         {
             /// <summary> (No Traces) Shows the error message sent from the Lua library. Never show the engine trace for errors. </summary>
@@ -224,7 +237,12 @@ namespace bLua
         }
 
         private const string luaConst_bluaInternalError = "blua_internal_error";
-        private const string luaConst_bluaInternalThreadMacros = "blua_internal_threadMacros";
+        private const string luaConst_bluaInternalCoroutine = "blua_internal_coroutine";
+        private const string luaConst_bluaInternalCoroutineCreate = "blua_internal_coroutine_create";
+        private const string luaConst_bluaInternalCoroutineYield = "blua_internal_coroutine_yield";
+        private const string luaConst_bluaInternalCoroutineResume = "blua_internal_coroutine_resume";
+        private const string luaConst_bluaInternalCoroutineClose = "blua_internal_coroutine_close";
+        private const string luaConst_bluaInternalCoroutineMacros = "blua_internal_coroutineMacros";
         private const string luaConst_bluaInternalTime = "blua_internal_time";
         private const string luaConst_bluaInternalSpawn = "blua_internal_spawn";
         private const string luaConst_bluaInternalCollectGarbage = "blua_internal_garbagecollection";
@@ -312,12 +330,17 @@ namespace bLua
             {
                 LuaLibAPI.luaopen_coroutine(state);
                 LuaLibAPI.lua_setglobal(state, "coroutine");
+
+                SetGlobal<Func<StateData, bLuaValue, bLuaValue>>(luaConst_bluaInternalCoroutineCreate, bLuaInternal_CoroutineCreate);
+                SetGlobal<Func<StateData, bLuaValue, bLuaValue[], bool>>(luaConst_bluaInternalCoroutineResume, bLuaInternal_CoroutineResume);
+                SetGlobal<Action<StateData>>(luaConst_bluaInternalCoroutineYield, bLuaInternal_CoroutineYield);
                 
-                if (OnTick != null)
-                {
-                    OnTick.RemoveListener(TickCoroutines);
-                    OnTick.AddListener(TickCoroutines);
-                }
+                DoBuffer(luaConst_bluaInternalCoroutine, 
+                    $@"coroutine.create = {luaConst_bluaInternalCoroutineCreate}
+                    coroutine.resume = function(fn, ...)
+                        {luaConst_bluaInternalCoroutineResume}(fn, {"{...}"})
+                    end
+                    coroutine.yield = {luaConst_bluaInternalCoroutineYield}");
             }
 
             if (FeatureEnabled(Features.Packages))
@@ -368,32 +391,21 @@ namespace bLua
                 LuaLibAPI.lua_setglobal(state, "debug");
             }
 
-            if (FeatureEnabled(Features.ThreadMacros))
+            if (FeatureEnabled(Features.CoroutineHelpers))
             {
                 SetGlobal<Func<float>>(luaConst_bluaInternalTime, bLuaInternal_Time);
-                SetGlobal<Func<bLuaValue, bLuaValue[], bLuaValue>>(luaConst_bluaInternalSpawn, bLuaInternal_Spawn);
+                SetGlobal<Func<StateData, bLuaValue, bLuaValue[], bLuaValue>>(luaConst_bluaInternalSpawn, bLuaInternal_Spawn);
                 
-                DoBuffer(luaConst_bluaInternalThreadMacros,
-                    @$"thread = {"{}"}
-
-                    function thread.wait(t)
+                DoBuffer(luaConst_bluaInternalCoroutineMacros,
+                    @$"coroutine.wait = function(t)
                         local startTime = {luaConst_bluaInternalTime}()
                         while {luaConst_bluaInternalTime}() < startTime + t do
                             coroutine.yield()
                         end
                     end
 
-                    function thread.spawn(fn, a, b, c, d, e, f, g, h)
-                        local args = {"{}"}
-                        table.insert(args, a)
-                        table.insert(args, b)
-                        table.insert(args, c)
-                        table.insert(args, d)
-                        table.insert(args, e)
-                        table.insert(args, f)
-                        table.insert(args, g)
-                        table.insert(args, h)
-                        return {luaConst_bluaInternalSpawn}(fn, args)
+                    coroutine.spawn = function(fn, ...)
+                        return {luaConst_bluaInternalSpawn}(fn, {"{...}"})
                     end");
             }
 
@@ -402,17 +414,8 @@ namespace bLua
                 SetGlobal<Action<bLuaValue[]>>(luaConst_bluaInternalPrintNew, bLuaInternal_Print);
                 
                 DoBuffer(luaConst_bluaInternalPrint,
-                    @$"print = function(a, b, c, d, e, f, g, h)
-                        local args = {"{}"}
-                        table.insert(args, a)
-                        table.insert(args, b)
-                        table.insert(args, c)
-                        table.insert(args, d)
-                        table.insert(args, e)
-                        table.insert(args, f)
-                        table.insert(args, g)
-                        table.insert(args, h)
-                        {luaConst_bluaInternalPrintNew}(args)
+                    @$"print = function(...)
+                        return {luaConst_bluaInternalPrintNew}({"{...}"})
                     end");
             }
 
@@ -428,13 +431,19 @@ namespace bLua
                 // Start the threading needed for running bLua without a MonoBehaviour
                 StartTicking();
             }
+
+            if (settings.coroutineBehaviour == bLuaSettings.CoroutineBehaviour.ResumeOnTick)
+            {
+                OnTick?.RemoveListener(TickCoroutines);
+                OnTick?.AddListener(TickCoroutines);
+            }
         }
 
         private void DeInit()
         {
             SceneManager.activeSceneChanged -= OnActiveSceneChanged;
 
-            OnTick.RemoveAllListeners();
+            OnTick?.RemoveAllListeners();
             StopTicking();
             StopGarbageCollecting();
 
@@ -505,7 +514,7 @@ namespace bLua
             while (!requestStopTicking
                 && initialized)
             {
-                if (settings.tickBehavior == bLuaSettings.TickBehavior.AlwaysTick)
+                if (settings.tickBehavior == bLuaSettings.TickBehavior.TickAtInterval)
                 {
                     InternalTick();
                 }
@@ -556,12 +565,12 @@ namespace bLua
                     {
                         continue;
                     }
-                    
-                    LuaThreadStatus threadStatus = ResumeCoroutine(new bLuaValue(this, coroutine.refId));
 
+                    bLuaValue coroutineValue = new bLuaValue(this, coroutine.refId);
+                    ResumeCoroutine(coroutineValue);
+                    
                     // Remove coroutines that have completed, are dead, or in case of errors
-                    if (threadStatus != LuaThreadStatus.LUA_OK
-                        && threadStatus != LuaThreadStatus.LUA_YIELD)
+                    if (Lua.IsDead(this, coroutine.state))
                     {
                         Lua.Unreference(this, coroutine.refId);
                         coroutines.Remove(coroutine);
@@ -570,65 +579,63 @@ namespace bLua
             }
         }
 
-        public bLuaValue CallCoroutine(bLuaValue _fn, params object[] _args)
+        public bLuaValue CallAsCoroutine(bLuaValue _fn, params object[] _args)
         {
             if (!FeatureEnabled(Features.Coroutines))
             {
-                Debug.LogError($"Can't use {nameof(CallCoroutine)} when the {nameof(Features.Coroutines)} feature is disabled. Using {nameof(Call)} instead, and returning null.");
+                Debug.LogError($"Can't use {nameof(CallAsCoroutine)} when the {nameof(Features.Coroutines)} feature is disabled. Using {nameof(Call)} instead, and returning null.");
 
                 Call(_fn, _args);
                 return null;
             }
 
-            IntPtr coroutineState = Lua.NewThread(this); // Create a new thread
-
-            // Copy the coroutine thread and pop a reference
-            LuaLibAPI.lua_pushvalue(state, -1);
-            int coroutineRefId = LuaXLibAPI.luaL_ref(state, Lua.LUA_REGISTRYINDEX);
+            bLuaValue coroutineValue = CreateCoroutine(_fn, out IntPtr coroutineState);
             
-            Lua.PushStack(state, _fn); // Push the function we want to call to the main stack
-            LuaLibAPI.lua_xmove(state, coroutineState, 1); // Move the function to the coroutine state
-            
-            // Push arguments to the coroutine state
-            if (_args != null)
-            {
-                foreach (object arg in _args)
-                {
-                    Lua.PushOntoStack(this, coroutineState, arg);
-                }
-            }
-            
-            // Track the created coroutine
-            LuaCoroutine coroutine = new LuaCoroutine()
-            {
-                state = coroutineState,
-                refId = coroutineRefId
-            };
-            coroutines.Add(coroutine);
-            
-            // Resume the coroutine that was created
-            bLuaValue coroutineValue = new bLuaValue(this, coroutineRefId);
-            ResumeCoroutine(coroutineValue, _args != null ? _args.Length : 0);
+            ResumeCoroutine(coroutineValue, _args);
 
             return coroutineValue;
         }
 
-        public LuaThreadStatus ResumeCoroutine(bLuaValue _coroutine, int _nargs = 0)
+        public bLuaValue CreateCoroutine(bLuaValue _fn, out IntPtr _coroutineState)
+        {
+            _coroutineState = Lua.NewThread(state);
+
+            // Copy the coroutine thread and pop a reference
+            LuaLibAPI.lua_pushvalue(state, -1);
+            int coroutineRefId = LuaXLibAPI.luaL_ref(state, Lua.LUA_REGISTRYINDEX);
+
+            Lua.PushStack(state, _fn); // Push the function we want to call to the main stack
+            LuaLibAPI.lua_xmove(state, _coroutineState, 1); // Move the function to the coroutine state
+            
+            bLuaValue coroutineValue = new bLuaValue(this, coroutineRefId);
+            
+            // Track the created coroutine
+            LuaCoroutine coroutine = new LuaCoroutine()
+            {
+                state = _coroutineState,
+                refId = coroutineValue.referenceID
+            };
+            coroutines.Add(coroutine);
+
+            return coroutineValue;
+        }
+        
+        public bool ResumeCoroutine(bLuaValue _coroutine, params object[] _args)
         {
             if (_coroutine == null)
             {
                 Debug.LogError("Failed to resume coroutine because it was null.");
-                return LuaThreadStatus.LUA_ERRRUN;
+                return false;
             }
             
             LuaCoroutine luaCoroutine = coroutines.Find(c => c.refId == _coroutine.referenceID);
             if (luaCoroutine == null)
             {
                 Debug.LogError("Failed to resume coroutine because it was not tracked by the bLua scheduler.");
-                return LuaThreadStatus.LUA_ERRRUN;
+                return false;
             }
 
-            return Lua.Resume(this, luaCoroutine.state, state, _nargs);
+            return Lua.ResumeThread(this, luaCoroutine.state, state, _args);
         }
 
         public void SetCoroutinePauseFlag(IntPtr _coroutineState, CoroutinePauseFlag _flag, bool _value)
@@ -982,6 +989,28 @@ namespace bLua
 
             ErrorFromLua(e, t);
         }
+
+        private bLuaValue bLuaInternal_CoroutineCreate([bLuaStateParam] StateData _data, bLuaValue _fn)
+        {
+            return CreateCoroutine(_fn, out IntPtr coroutineState);
+        }
+        
+        private void bLuaInternal_CoroutineYield([bLuaStateParam] StateData _data)
+        {
+            Lua.YieldThread(this, _data.state, 0);
+        }
+        
+        private bool bLuaInternal_CoroutineResume([bLuaStateParam] StateData _data, bLuaValue _thread, bLuaValue[] _args)
+        {
+            // Safely convert bLuaValue[] to object[]
+            object[] args = new object[_args.Length];
+            for (int i = 0; i < _args.Length; i++)
+            {
+                args[i] = _args[i];
+            }
+            
+            return Lua.ResumeThread(this, _thread.CastToPointer(), _data.state, args);
+        }
         
         private void bLuaInternal_Print(bLuaValue[] _args)
         {
@@ -1002,15 +1031,12 @@ namespace bLua
 #endif // UNITY_EDITOR
         }
 
-        private bLuaValue bLuaInternal_Spawn(bLuaValue _fn, bLuaValue[] _args)
+        private bLuaValue bLuaInternal_Spawn([bLuaStateParam] StateData _data, bLuaValue _fn, bLuaValue[] _args)
         {
-            object[] args = new object[_args.Length];
-            for (int i = 0; i < args.Length; i++)
-            {
-                args[i] = _args[i];
-            }
-            
-            return CallCoroutine(_fn, args);
+            bLuaValue coroutineValue = bLuaInternal_CoroutineCreate(_data, _fn);
+            bLuaInternal_CoroutineResume(_data, coroutineValue, _args);
+
+            return coroutineValue;
         }
 #endregion // C Functions called from Lua
         

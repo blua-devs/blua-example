@@ -658,41 +658,59 @@ namespace bLua.NativeLua
             return LuaLibAPI.lua_isyieldable(_state) == 1;
         }
 
-        public static LuaThreadStatus Yield(bLuaInstance _instance, IntPtr _state, int _results)
+        public static LuaThreadStatus YieldThread(bLuaInstance _instance, IntPtr _state, int _results)
         {
             return (LuaThreadStatus)LuaLibAPI.lua_yieldk(_state, _results, IntPtr.Zero, IntPtr.Zero);
         }
 
-        public static LuaThreadStatus Resume(bLuaInstance _instance, IntPtr _state, IntPtr _instigator, int _nargs)
+        public static bool IsDead(bLuaInstance _instance, IntPtr _state)
         {
             LuaThreadStatus preResumeStatus = (LuaThreadStatus)LuaLibAPI.lua_status(_state);
-            if (preResumeStatus != LuaThreadStatus.LUA_OK
-                && preResumeStatus != LuaThreadStatus.LUA_YIELD)
+            if (preResumeStatus == LuaThreadStatus.LUA_OK) // Coroutine is either dead or hasn't started yet
             {
-                return preResumeStatus;
+                if (LuaLibAPI.lua_gettop(_state) == 0) // Coroutine stack is empty (coroutine is dead)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        
+        public static bool ResumeThread(bLuaInstance _instance, IntPtr _state, IntPtr _instigator, params object[] _args)
+        {
+            if (IsDead(_instance, _state))
+            {
+                return false;
             }
             
-            LuaThreadStatus postResumeStatus = (LuaThreadStatus)LuaLibAPI.lua_resume(_state, _instigator, _nargs, out int nResults);
-
+            // Push arguments to the coroutine state
+            if (_args != null)
+            {
+                foreach (object arg in _args)
+                {
+                    PushOntoStack(_instance, _state, arg);
+                }
+            }
+            
+            LuaThreadStatus postResumeStatus = (LuaThreadStatus)LuaLibAPI.lua_resume(_state, _instigator, _args != null ? _args.Length : 0, out int nResults);
+            
             if (postResumeStatus != LuaThreadStatus.LUA_OK
                 && postResumeStatus != LuaThreadStatus.LUA_YIELD)
             {
                 string error = GetString(_state, -1);
                 LuaPop(_state, 1);
                 _instance.ErrorFromLua($"{bLuaError.error_inCoroutineResume}", $"{error}");
+
+                return false;
             }
 
-            return postResumeStatus;
+            return true;
         }
 
-        public static void PushThread(bLuaInstance _instance)
+        public static IntPtr NewThread(IntPtr _state)
         {
-            LuaLibAPI.lua_pushthread(_instance.state);
-        }
-
-        public static IntPtr NewThread(bLuaInstance _instance)
-        {
-            return LuaLibAPI.lua_newthread(_instance.state);
+            return LuaLibAPI.lua_newthread(_state);
         }
 #endregion // Coroutines
 
@@ -853,10 +871,34 @@ namespace bLua.NativeLua
 #region Invocation
         public static LuaThreadStatus InvokeCSharpMethod(bLuaInstance _instance, IntPtr _state, MethodCallInfo _methodCallInfo, object _liveObject, params object[] _args)
         {
+            // If the method is async, yield the coroutine, pause the coroutine, and only resume + unpause when the async method has completed
+            if ((typeof(Task).IsAssignableFrom(_methodCallInfo.methodInfo.ReturnType) || _methodCallInfo.methodInfo.GetCustomAttribute<AsyncStateMachineAttribute>() != null)
+                && _instance.FeatureEnabled(Features.AsyncUserDataMethods)
+                && _instance.FeatureEnabled(Features.Coroutines)
+                && IsYieldable(_state))
+            {
+                Func<Task> asyncTask = async () =>
+                {
+                    Task methodCallTask = (Task)InvokeMethodCallInfo(_methodCallInfo, _liveObject, _state, _args);
+                    await methodCallTask;
+                    
+                    _instance.SetCoroutinePauseFlag(_state, CoroutinePauseFlag.BLUA_CSHARPASYNCAWAIT, false);
+                    
+                    ResumeThread(_instance, _state, IntPtr.Zero, 0);
+                };
+
+                _instance.SetCoroutinePauseFlag(_state, CoroutinePauseFlag.BLUA_CSHARPASYNCAWAIT, true);
+                
+                Task.Run(asyncTask);
+            
+                return YieldThread(_instance, _state, 0);
+            }
+            
+            // Otherwise call the method normally
             object result = InvokeMethodCallInfo(_methodCallInfo, _liveObject, _state, _args);
             bLuaUserData.PushReturnTypeOntoStack(_instance, _state, _methodCallInfo.returnType, result);
-
-            return LuaThreadStatus.LUA_OK;
+            
+            return LuaThreadStatus.LUA_YIELD;
         }
 
         private static object InvokeMethodCallInfo(MethodCallInfo _methodCallInfo, object _liveObject, IntPtr _state, params object[] _args)
