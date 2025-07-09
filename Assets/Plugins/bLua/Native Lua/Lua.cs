@@ -879,18 +879,21 @@ namespace bLua.NativeLua
             {
                 Func<Task> asyncTask = async () =>
                 {
-                    Task methodCallTask = (Task)InvokeMethodCallInfo(_methodCallInfo, _liveObject, _state, _args);
-                    await methodCallTask;
+                    object result = InvokeMethodCallInfo(_methodCallInfo, _liveObject, _state, _args);
                     
+                    Task methodCallTask = (Task)result;
+                    await methodCallTask;
+
                     _instance.SetCoroutinePauseFlag(_state, CoroutinePauseFlag.BLUA_CSHARPASYNCAWAIT, false);
                     
-                    ResumeThread(_instance, _state, IntPtr.Zero, 0);
+                    PropertyInfo resultProperty = result.GetType().GetProperty("Result");
+                    ResumeThread(_instance, _state, _state, resultProperty?.GetValue(result));
                 };
 
                 _instance.SetCoroutinePauseFlag(_state, CoroutinePauseFlag.BLUA_CSHARPASYNCAWAIT, true);
                 
                 Task.Run(asyncTask);
-            
+                
                 return YieldThread(_instance, _state, 0);
             }
             
