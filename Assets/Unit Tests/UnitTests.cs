@@ -229,7 +229,7 @@ public class UnitTests : MonoBehaviour
             Assert.AreEqual(result.Number, 13.0);
         }
 
-        using (bLuaValue fn = instance.FullLookup(instance.GetGlobal("MyFunctions"), "blah"))
+        using (bLuaValue fn = instance.GetGlobal("MyFunctions").Get("blah"))
         {
             Assert.AreEqual(instance.Call(fn, 12).Number, 12.0);
 

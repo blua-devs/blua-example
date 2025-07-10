@@ -201,7 +201,6 @@ namespace bLua
         public int stringCacheHit = 0, stringCacheMiss = 0;
         public StringCacheEntry[] stringCache = new StringCacheEntry[997];
         private Dictionary<string, bLuaValue> internedStrings = new();
-        private Dictionary<string, bLuaValue> lookups = new();
 
         public List<MethodCallInfo> registeredMethods = new();
         public List<PropertyCallInfo> registeredProperties = new();
@@ -972,17 +971,6 @@ namespace bLua
 
                 return Lua.PopStackIntoValue(this);
             }
-        }
-
-        public bLuaValue FullLookup(bLuaValue _value, string _key)
-        {
-            if (lookups.TryGetValue(_key, out bLuaValue fn) == false)
-            {
-                fn = DoBuffer("lookup", $"return function(obj) return obj.{_key} end");
-                lookups.Add(_key, fn);
-            }
-
-            return Call(fn, _value);
         }
 
         public bLuaValue InternString(string s)
