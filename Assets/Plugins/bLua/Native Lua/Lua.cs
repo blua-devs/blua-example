@@ -879,15 +879,46 @@ namespace bLua.NativeLua
             {
                 Func<Task> asyncTask = async () =>
                 {
-                    object result = InvokeMethodCallInfo(_methodCallInfo, _liveObject, _state, _args);
+                    object returnValue = InvokeMethodCallInfo(_methodCallInfo, _liveObject, _state, _args);
                     
-                    Task methodCallTask = (Task)result;
-                    await methodCallTask;
+                    // Await the async Task's completion before continuing
+                    await (Task)returnValue;
 
                     _instance.SetCoroutinePauseFlag(_state, CoroutinePauseFlag.BLUA_CSHARPASYNCAWAIT, false);
+
+                    // If our Task has a return type, we need to push those to the Lua stack as the return value(/s)
+                    Type returnValueType = returnValue.GetType();
+                    if (typeof(Task).IsAssignableFrom(returnValueType))
+                    {
+                        PropertyInfo taskTypeResultPropertyInfo = returnValueType.GetProperty("Result");
+                        if (taskTypeResultPropertyInfo != null)
+                        {
+                            object taskReturnValue = taskTypeResultPropertyInfo.GetValue(returnValue);
+                            object[] taskReturnValues;
+
+                            Type taskReturnType = taskReturnValue.GetType();
+                            if (taskReturnType.IsTupleType()) // If type is Task<T1, T2, ...> (aka Task<Tuple<T1, T2, ...>>)
+                            {
+                                FieldInfo[] fieldInfos = taskReturnType.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                                taskReturnValues = new object[fieldInfos.Length];
+                                for (int i = 0; i < fieldInfos.Length; i++)
+                                {
+                                    taskReturnValues[i] = fieldInfos[i].GetValue(taskReturnValue);
+                                }
+                            }
+                            else
+                            {
+                                taskReturnValues = new object[] { taskReturnValue };
+                            }
+                            
+                            // Resume the thread and pass in any return values from the C# function
+                            ResumeThread(_instance, _state, _state, taskReturnValues);
+                            return;
+                        }
+                    }
                     
-                    PropertyInfo resultProperty = result.GetType().GetProperty("Result");
-                    ResumeThread(_instance, _state, _state, resultProperty?.GetValue(result));
+                    // Resume without passing any return values
+                    ResumeThread(_instance, _state, _state);
                 };
 
                 _instance.SetCoroutinePauseFlag(_state, CoroutinePauseFlag.BLUA_CSHARPASYNCAWAIT, true);
@@ -898,8 +929,8 @@ namespace bLua.NativeLua
             }
             
             // Otherwise call the method normally
-            object result = InvokeMethodCallInfo(_methodCallInfo, _liveObject, _state, _args);
-            bLuaUserData.PushReturnTypeOntoStack(_instance, _state, _methodCallInfo.returnType, result);
+            object returnValue = InvokeMethodCallInfo(_methodCallInfo, _liveObject, _state, _args);
+            bLuaUserData.PushReturnTypeOntoStack(_instance, _state, _methodCallInfo.returnType, returnValue);
             
             return LuaThreadStatus.LUA_YIELD;
         }
