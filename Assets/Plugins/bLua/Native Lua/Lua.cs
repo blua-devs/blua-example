@@ -873,7 +873,6 @@ namespace bLua.NativeLua
         {
             // If the method is async, yield the coroutine, pause the coroutine, and only resume + unpause when the async method has completed
             if ((typeof(Task).IsAssignableFrom(_methodCallInfo.methodInfo.ReturnType) || _methodCallInfo.methodInfo.GetCustomAttribute<AsyncStateMachineAttribute>() != null)
-                && _instance.FeatureEnabled(Features.AsyncUserDataMethods)
                 && _instance.FeatureEnabled(Features.Coroutines)
                 && IsYieldable(_state))
             {

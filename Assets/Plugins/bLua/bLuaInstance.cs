@@ -73,10 +73,7 @@ namespace bLua
         /// <remarks> WARNING! If NOT enabled, you may experience leftover Lua userdata (and bLuaValue objects in C#) that NEVER get garbage collected. It is
         /// highly recommended to keep this setting on as a lightweight backup to prevent potentially consuming all available memory. </remarks>
         /// <summary> When enabled, bLua will run its own GC system to clean up Lua userdata that isn't normally cleaned up by Lua's GC. </summary>
-        CSharpGarbageCollection = 8192,
-        /// <remarks> WARNING! This feature is EXPERIMENTAL and may cause errors when running async C# methods. </remarks>
-        /// <summary> When enabled, bLua will run C# async methods as coroutines in Lua, meaning execution will not continue until the async method is done. </summary>
-        AsyncUserDataMethods = 16384
+        CSharpGarbageCollection = 8192
     }
 
     /// <summary> Contains settings for the bLua runtime. </summary>
@@ -104,8 +101,7 @@ namespace bLua
         /// <remarks> WARNING! Some of these features include developer warnings, please review the remarks on individual features. </remarks>
         /// <summary> Includes all the features Lua and bLua have to offer plus experimental bLua features. </summary>
         public static Features SANDBOX_ALL_EXPERIMENTAL = SANDBOX_ALL
-            | Features.ImplicitSyntaxSugar // There is at least one known issue with ImplicitSyntaxSugar uncovered in the bLua example Unit Tests
-            | Features.AsyncUserDataMethods;
+            | Features.ImplicitSyntaxSugar; // There is at least one known issue with ImplicitSyntaxSugar uncovered in the bLua example Unit Tests
 
         /// <remarks> WARNING! Some of these features include developer warnings, please review the remarks on individual features. </remarks>
         /// <summary> Includes most Lua and bLua features, specifically ones that might be used commonly in modding. </summary>
