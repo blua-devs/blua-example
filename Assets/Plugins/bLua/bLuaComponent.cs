@@ -69,13 +69,23 @@ public class bLuaComponent : MonoBehaviour
         {
             instance = new bLuaInstance(new bLuaSettings()
             {
-                features = bLuaSettings.SANDBOX_ALL_NONEXPERIMENTAL,
-                tickBehavior = bLuaSettings.TickBehavior.Manual,
-                autoRegisterTypes = bLuaSettings.AutoRegisterTypes.None
+                features = bLuaSettings.SANDBOX_ALL_EXPERIMENTAL,
+                tickBehavior = bLuaSettings.TickBehavior.Manual, // We tick the instance on Update
+                coroutineBehaviour = bLuaSettings.CoroutineBehaviour.ResumeOnTick // We resume all coroutines on Tick
             });
             
-            // Register all the types we intend on using
-            instance.RegisterAllBLuaUserData();
+            // Override print to log in Unity
+            instance.OnPrint.AddListener(args =>
+            {
+                string print = "";
+                
+                foreach (bLuaValue arg in args)
+                {
+                    print += arg.ToString();
+                }
+                
+                Debug.Log(print);
+            });
         }
 
         if (environment == null)
@@ -103,16 +113,7 @@ public class bLuaComponent : MonoBehaviour
 
     private void Update()
     {
-        if (ranCode)
-        {
-            instance.ManualTick();
-
-            bLuaValue v = environment.Get("Update");
-            if (v != null)
-            {
-                v.Call();
-            }
-        }
+        instance.ManualTick();
 
         if (runMonoBehaviourEvents)
         {
@@ -159,7 +160,7 @@ public class bLuaComponent : MonoBehaviour
             if (func != null
                 && func.Type == DataType.Function)
             {
-                func.Call();
+                instance.CallAsCoroutine(func);
             }
         }
     }

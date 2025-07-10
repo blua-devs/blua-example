@@ -15,7 +15,7 @@ namespace bLua
 
         public DataType dataType = DataType.Unknown;
 
-        private bLuaInstance instance;
+        public bLuaInstance instance { get; private set; }
 
 
         public static bLuaValue Nil = new()
@@ -112,13 +112,13 @@ namespace bLua
 
         public static bLuaValue CreateFunction(bLuaInstance _instance, LuaCFunction _fn)
         {
-            Lua.LuaPushCFunction(_instance, _fn);
+            Lua.LuaPushCFunction(_instance, _instance.state, _fn);
             return Lua.PopStackIntoValue(_instance);
         }
 
         public static bLuaValue CreateClosure(bLuaInstance _instance, LuaCFunction _fn, params bLuaValue[] _upvalues)
         {
-            Lua.PushClosure(_instance, _fn, _upvalues);
+            Lua.PushClosure(_instance, _instance.state, _fn, _upvalues);
             return Lua.PopStackIntoValue(_instance);
         }
 
@@ -173,7 +173,7 @@ namespace bLua
             {
                 if (_deterministic)
                 {
-                    Lua.DestroyDynValue(instance, referenceID);
+                    Lua.Unreference(instance, referenceID);
                 }
                 else
                 {
@@ -198,6 +198,15 @@ namespace bLua
             }
         }
 
+        public IntPtr Pointer
+        {
+            get
+            {
+                Lua.PushStack(instance, this);
+                return Lua.PopStackIntoPointer(instance);
+            }
+        }
+        
         public double Number
         {
             get
@@ -365,27 +374,39 @@ namespace bLua
             }
         }
 
-        public string ToPrintString()
-        {
-            return CastToString();
-        }
-
-        public string ToDebugPrintString()
-        {
-            return CastToString();
-        }
-
-        public string CastToString(string _defaultValue = "")
+        public IntPtr CastToPointer()
         {
             DataType pushedDataType = (DataType)Lua.PushStack(instance, this);
             switch (pushedDataType)
             {
+                case DataType.Function:
+                case DataType.Table:
+                case DataType.Thread:
+                    return Lua.PopStackIntoPointer(instance);
+                default:
+                    Lua.PopStack(instance);
+                    return IntPtr.Zero;
+            }
+        }
+
+        public override string ToString()
+        {
+            return CastToString();
+        }
+
+        public string CastToString()
+        {
+            DataType pushedDataType = (DataType)Lua.PushStack(instance, this);
+            switch (pushedDataType)
+            {
+                case DataType.Nil:
+                    return "nil";
+                case DataType.Boolean:
+                    return CastToBool() ? "true" : "false";
+                case DataType.Number:
+                    return CastToNumber().ToString();
                 case DataType.String:
                     return Lua.PopString(instance);
-                case DataType.Number:
-                    return Lua.PopNumber(instance).ToString();
-                case DataType.Boolean:
-                    return Lua.PopBool(instance) ? "true" : "false";
                 case DataType.UserData:
                     bLuaValue v = Lua.PopStackIntoValue(instance);
                     if (v.Object.GetType().GetMethod("ToString") != null)
@@ -394,8 +415,7 @@ namespace bLua
                     }
                     goto default;
                 default:
-                    Lua.PopStack(instance);
-                    return _defaultValue;
+                    return $"{pushedDataType.ToString().ToLower()}: {CastToPointer().ToString()}";
             }
         }
 
@@ -570,20 +590,6 @@ namespace bLua
             }
         }
 
-        public bLuaValue Call(params object[] _args)
-        {
-            if (instance != null)
-            {
-                return instance.Call(this, _args);
-            }
-            return null;
-        }
-
-        public void CallCoroutine(params object[] _args)
-        {
-            instance?.CallCoroutine(this, _args);
-        }
-
         public int Length
         {
             get
@@ -750,7 +756,6 @@ namespace bLua
             }
         }
 
-        //has only non-ints.
         public bool IsPureArray
         {
             get
@@ -803,7 +808,7 @@ namespace bLua
                 || instance == null
                 || other.instance == null)
             {
-                // unable to do a raw equality check via lua if the values exist in different lua instances
+                // Unable to do a raw equality check via Lua if the values exist in different instances
                 return false;
             }
 

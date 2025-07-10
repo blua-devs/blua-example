@@ -153,7 +153,7 @@ public class UnitTests : MonoBehaviour
     {
         bLuaInstance instance = new bLuaInstance(new bLuaSettings()
         {
-            features = bLuaSettings.SANDBOX_ALL_NONEXPERIMENTAL,
+            features = bLuaSettings.SANDBOX_ALL,
             internalVerbosity = bLuaSettings.InternalErrorVerbosity.Verbose
         });
 
@@ -250,54 +250,54 @@ public class UnitTests : MonoBehaviour
             v.Set("a", bLuaValue.CreateNumber(instance, 4));
             v.Set("b", bLuaValue.CreateNumber(instance, 5));
             v.Set("c", bLuaValue.CreateNumber(instance, 6));
-            bLuaValue t = fn.Call(v);
+            bLuaValue t = instance.Call(fn, v);
             Assert.AreEqual(t.Number, 15);
         }
 
         using (bLuaValue fn = bLuaValue.CreateFunction(instance, TestCFunction))
         {
-            Assert.AreEqual(fn.Call().Number, 5);
+            Assert.AreEqual(instance.Call(fn).Number, 5);
         }
 
         using (bLuaValue fn = instance.GetGlobal("test_userdata"))
         {
             var userdata = bLuaValue.CreateUserData(instance, new TestUserDataClass() { n = 7 });
-            Assert.AreEqual(fn.Call(userdata).Number, 40);
+            Assert.AreEqual(instance.Call(fn, userdata).Number, 40);
             using (bLuaValue fn2 = instance.GetGlobal("incr_userdata"))
             {
-                fn2.Call(userdata);
-                Assert.AreEqual(fn.Call(userdata).Number, 42);
+                instance.Call(fn2, userdata);
+                Assert.AreEqual(instance.Call(fn, userdata).Number, 42);
             }
         }
 
         using (bLuaValue fn = instance.GetGlobal("test_addstrings"))
         {
             var userdata = bLuaValue.CreateUserData(instance, new TestUserDataClass() { n = 7 });
-            Assert.AreEqual(fn.Call(userdata, "abc:", bLuaValue.CreateString(instance, "def")).String, "abc:def");
+            Assert.AreEqual(instance.Call(fn, userdata, "abc:", bLuaValue.CreateString(instance, "def")).String, "abc:def");
         }
 
         using (bLuaValue fn = instance.GetGlobal("test_varargs"))
         {
             var userdata = bLuaValue.CreateUserData(instance, new TestUserDataClass() { n = 7 });
-            Assert.AreEqual(fn.Call(userdata).Number, 20);
+            Assert.AreEqual(instance.Call(fn, userdata).Number, 20);
         }
 
         using (bLuaValue fn = instance.GetGlobal("test_field"))
         {
             var userdata = bLuaValue.CreateUserData(instance, new TestUserDataClass() { n = 7 });
-            Assert.AreEqual(fn.Call(userdata).Number, 9.0);
+            Assert.AreEqual(instance.Call(fn, userdata).Number, 9.0);
         }
 
         using (bLuaValue fn = instance.GetGlobal("test_field"))
         {
             var userdata = bLuaValue.CreateUserData(instance, new TestUserDataClassDerived() { n = 7 });
-            Assert.AreEqual(fn.Call(userdata).Number, 9.0);
+            Assert.AreEqual(instance.Call(fn, userdata).Number, 9.0);
         }
 
         using (bLuaValue fn = instance.GetGlobal("test_classproperty"))
         {
             var userdata = bLuaValue.CreateUserData(instance, new TestUserDataClassDerived() { n = 7 });
-            Assert.AreEqual(fn.Call(userdata, 7.0).Number, 7.0);
+            Assert.AreEqual(instance.Call(fn, userdata, 7.0).Number, 7.0);
         }
 
         Assert.AreEqual(bLua.NativeLua.LuaLibAPI.lua_gettop(instance.state), stackSize);
@@ -309,7 +309,7 @@ public class UnitTests : MonoBehaviour
     {
         bLuaInstance instance = new bLuaInstance(new bLuaSettings()
         {
-            features = bLuaSettings.SANDBOX_ALL_NONEXPERIMENTAL,
+            features = bLuaSettings.SANDBOX_ALL,
             internalVerbosity = bLuaSettings.InternalErrorVerbosity.Verbose
         });
 
@@ -326,7 +326,7 @@ public class UnitTests : MonoBehaviour
 
         using (bLuaValue fn = instance.GetGlobal("testYield"))
         {
-            instance.CallCoroutine(fn, 5);
+            instance.CallAsCoroutine(fn, 5);
         }
     }
 
@@ -334,7 +334,7 @@ public class UnitTests : MonoBehaviour
     {
         bLuaInstance instance = new bLuaInstance(new bLuaSettings()
         {
-            features = bLuaSettings.SANDBOX_ALL_NONEXPERIMENTAL,
+            features = bLuaSettings.SANDBOX_ALL,
             internalVerbosity = bLuaSettings.InternalErrorVerbosity.Verbose
         });
 
@@ -361,7 +361,7 @@ public class UnitTests : MonoBehaviour
 
         using (bLuaValue fn = instance.GetGlobal("testMacros"))
         {
-            instance.CallCoroutine(fn, 3);
+            instance.CallAsCoroutine(fn, 3);
         }
     }
 

@@ -20,6 +20,7 @@ namespace bLua.Internal
         public const string error_callingDelegate = "error calling delegate: ";
         public const string error_inBuffer = "error in buffer: ";
         public const string error_inFunctionCall = "error in function call: ";
+        public const string error_inCoroutineResume = "error in coroutine resume: ";
         public const string error_inMetamethodCall = "error in function call: ";
         public const string error_setProperty = "failed to set property: ";
 
@@ -27,7 +28,10 @@ namespace bLua.Internal
         public const string error_objectNotProvided = "object not provided when calling userdata: ";
         public const string error_invalidUserdata = "could not find valid userdata object";
 
+        public const string error_coroutineWrap = "error in coroutine.wrap: ";
+
         public const string error_stackIsEmpty = "stack is empty";
+        public const string error_stackHasNoRoom = "no room on stack";
         public const string error_unrecognizedStackPush = "unrecognized object pushing onto stack: ";
 
         public const string error_concatenation = "failed to concatenate type: ";

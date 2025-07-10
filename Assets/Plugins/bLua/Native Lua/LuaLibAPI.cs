@@ -6,6 +6,9 @@ namespace bLua.NativeLua
     public static class LuaLibAPI
     {
         [DllImport(Lua.LUA_DLL)]
+        public static extern void lua_pop(System.IntPtr state, int n);
+        
+        [DllImport(Lua.LUA_DLL)]
         public static extern void lua_createtable(System.IntPtr state, int narray, int ntable);
 
         [DllImport(Lua.LUA_DLL)]
@@ -99,10 +102,16 @@ namespace bLua.NativeLua
 
         [DllImport(Lua.LUA_DLL)]
         public static extern void lua_xmove(System.IntPtr state, System.IntPtr to, int n);
-
+        
+        [DllImport(Lua.LUA_DLL)]
+        public static extern void lua_remove(System.IntPtr state, int idx);
+        
         [DllImport(Lua.LUA_DLL)]
         public static extern int lua_type(System.IntPtr state, int idx);
 
+        [DllImport(Lua.LUA_DLL)]
+        public static extern System.IntPtr lua_topointer(System.IntPtr state, int idx);
+        
         [DllImport(Lua.LUA_DLL)]
         public static extern int lua_toboolean(System.IntPtr state, int idx);
 
@@ -121,6 +130,9 @@ namespace bLua.NativeLua
         [DllImport(Lua.LUA_DLL)]
         public static extern void lua_pushcclosure(System.IntPtr state, System.IntPtr fn, int n);
 
+        [DllImport(Lua.LUA_DLL)]
+        public static extern void lua_getupvalue(System.IntPtr state, int idx, int n);
+        
         [DllImport(Lua.LUA_DLL)]
         public static extern System.IntPtr lua_newuserdatauv(System.IntPtr state, System.IntPtr sz, int nuvalue);
 
@@ -180,7 +192,7 @@ namespace bLua.NativeLua
         public static extern int lua_pcallk(System.IntPtr state, int nargs, int nresults, int msgh, long ctx, System.IntPtr k);
 
         [DllImport(Lua.LUA_DLL)]
-        public static extern int lua_resume(System.IntPtr state, System.IntPtr from, int nargs, CoroutineResult result);
+        public static extern int lua_resume(System.IntPtr state, System.IntPtr from, int nargs, out int nres);
 
         [DllImport(Lua.LUA_DLL)]
         public static extern void lua_settop(System.IntPtr state, int n);
@@ -193,7 +205,7 @@ namespace bLua.NativeLua
 
         [DllImport(Lua.LUA_DLL)]
         public static extern int lua_checkstack(System.IntPtr state, int n);
-
+        
         [DllImport(Lua.LUA_DLL)]
         public static extern int lua_rawgeti(System.IntPtr state, int idx, int n);
 
@@ -204,6 +216,24 @@ namespace bLua.NativeLua
         public static extern int lua_compare(System.IntPtr state, int idx1, int idx2, int op);
 
         [DllImport(Lua.LUA_DLL)]
+        public static extern int lua_getfield(System.IntPtr state, int idx, string k);
+        
+        [DllImport(Lua.LUA_DLL)]
         public static extern void lua_setfield(System.IntPtr state, int idx, System.IntPtr k);
+
+        [DllImport(Lua.LUA_DLL)]
+        public static extern int lua_status(System.IntPtr state);
+        
+        [DllImport(Lua.LUA_DLL)]
+        public static extern System.IntPtr lua_newthread(System.IntPtr state);
+        
+        [DllImport(Lua.LUA_DLL)]
+        public static extern int lua_yieldk(System.IntPtr state, int nresults, System.IntPtr ctx, System.IntPtr k);
+
+        [DllImport(Lua.LUA_DLL)]
+        public static extern int lua_isyieldable(System.IntPtr state);
+        
+        [DllImport(Lua.LUA_DLL)]
+        public static extern int lua_pushthread(System.IntPtr state);
     }
 } // bLua.NativeLua namespace
