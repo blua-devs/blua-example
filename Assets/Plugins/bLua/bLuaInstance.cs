@@ -239,7 +239,7 @@ namespace bLua
         private const string luaConst_bluaInternalCoroutineResume = "blua_internal_coroutine_resume";
         private const string luaConst_bluaInternalCoroutineClose = "blua_internal_coroutine_close";
         private const string luaConst_bluaInternalCoroutineMacros = "blua_internal_coroutineMacros";
-        private const string luaConst_bluaInternalTime = "blua_internal_time";
+        private const string luaConst_bluaInternalWait = "blua_internal_wait";
         private const string luaConst_bluaInternalSpawn = "blua_internal_spawn";
         private const string luaConst_bluaInternalCollectGarbage = "blua_internal_garbagecollection";
         private const string luaConst_bluaInternalPrint = "blua_internal_print";
@@ -389,17 +389,11 @@ namespace bLua
 
             if (FeatureEnabled(Features.CoroutineHelpers))
             {
-                SetGlobal<Func<float>>(luaConst_bluaInternalTime, bLuaInternal_Time);
+                SetGlobal<Func<StateData, float, Task>>(luaConst_bluaInternalWait, bLuaInternal_Wait);
                 SetGlobal<Func<StateData, bLuaValue, bLuaValue[], bLuaValue>>(luaConst_bluaInternalSpawn, bLuaInternal_Spawn);
                 
                 DoBuffer(luaConst_bluaInternalCoroutineMacros,
-                    @$"coroutine.wait = function(t)
-                        local startTime = {luaConst_bluaInternalTime}()
-                        while {luaConst_bluaInternalTime}() < startTime + t do
-                            coroutine.yield()
-                        end
-                    end
-
+                    @$"coroutine.wait = {luaConst_bluaInternalWait}
                     coroutine.spawn = function(fn, ...)
                         return {luaConst_bluaInternalSpawn}(fn, {"{...}"})
                     end");
@@ -1027,6 +1021,11 @@ namespace bLua
 #endif // UNITY_EDITOR
         }
 
+        private async Task bLuaInternal_Wait([bLuaStateParam] StateData _data, float _t)
+        {
+            await Task.Delay((int)(_t * 1000f));
+        }
+        
         private bLuaValue bLuaInternal_Spawn([bLuaStateParam] StateData _data, bLuaValue _fn, bLuaValue[] _args)
         {
             bLuaValue coroutineValue = bLuaInternal_CoroutineCreate(_data, _fn);
