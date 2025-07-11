@@ -1,3 +1,4 @@
+using System;
 using System.Runtime.InteropServices;
 
 namespace bLua.NativeLua
@@ -6,21 +7,21 @@ namespace bLua.NativeLua
     public static class LuaXLibAPI
     {
         [DllImport(Lua.LUA_DLL)]
-        public static extern int luaL_loadbufferx(System.IntPtr L, string buff, ulong sz, string name, string mode);
+        public static extern int luaL_loadbufferx(IntPtr L, string buff, ulong sz, string name, string mode);
 
         [DllImport(Lua.LUA_DLL)]
-        public static extern int luaL_newmetatable(System.IntPtr L, string tname);
+        public static extern int luaL_newmetatable(IntPtr L, string tname);
 
         [DllImport(Lua.LUA_DLL)]
-        public static extern System.IntPtr luaL_newstate();
+        public static extern IntPtr luaL_newstate();
 
         [DllImport(Lua.LUA_DLL)]
-        public static extern int luaL_ref(System.IntPtr L, int t);
+        public static extern int luaL_ref(IntPtr L, int t);
 
         [DllImport(Lua.LUA_DLL)]
-        public static extern void luaL_traceback(System.IntPtr L, System.IntPtr L1, string msg, int level);
+        public static extern void luaL_traceback(IntPtr L, IntPtr L1, string msg, int level);
 
         [DllImport(Lua.LUA_DLL)]
-        public static extern void luaL_unref(System.IntPtr L, int t, int _ref);
+        public static extern void luaL_unref(IntPtr L, int t, int _ref);
     }
 } // bLua.NativeLua namespace

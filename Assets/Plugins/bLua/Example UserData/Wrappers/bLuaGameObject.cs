@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace bLua.ExampleUserData
 {
-    [bLuaUserData(reliantUserData = new Type[1] { typeof(bLuaVector3) })]
+    [bLuaUserData(reliantUserData = new Type[] { typeof(bLuaVector3) })]
     public class bLuaGameObject
     {
         [bLuaHidden]

@@ -1,9 +1,9 @@
-using System.Collections.Generic;
-using UnityEngine.Assertions;
-using UnityEngine;
-using bLua;
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
+using UnityEngine;
+using UnityEngine.Assertions;
+using bLua;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -33,7 +33,7 @@ public class TestUserDataClass
 
     public string AddStrings(bLuaValue a, string b)
     {
-        return a.String + b;
+        return a + b;
     }
 
     public int VarArgsFunction(int a, params object[] b)
@@ -59,7 +59,7 @@ public class TestUserDataClass
 
     public static int StaticFunction(bLuaValue a, int b = 2, int c = 2)
     {
-        return a.Integer + b + c;
+        return a.ToInt() + b + c;
     }
 
     public async Task AsyncFunction(int a)
@@ -245,12 +245,12 @@ public class UnitTests : MonoBehaviour
         using (bLuaValue fn = instance.GetGlobal("myfunction"))
         {
             var result = instance.Call(fn, 8);
-            Assert.AreEqual(result.Number, 13.0);
+            Assert.AreEqual(result.ToNumber(), 13.0);
         }
 
         using (bLuaValue fn = instance.GetGlobal("MyFunctions").Get("blah"))
         {
-            Assert.AreEqual(instance.Call(fn, 12).Number, 12.0);
+            Assert.AreEqual(instance.Call(fn, 12).ToNumber(), 12.0);
 
             Assert.AreEqual(bLua.NativeLua.LuaLibAPI.lua_gettop(instance.state), stackSize);
         }
@@ -258,9 +258,9 @@ public class UnitTests : MonoBehaviour
         using (bLuaValue fn = instance.GetGlobal("make_table"))
         {
             bLuaValue t = instance.Call(fn);
-            Dictionary<string, bLuaValue> tab = t.Dict();
+            Dictionary<string, bLuaValue> tab = t.ToDictionary();
             Assert.AreEqual(tab.Count, 3);
-            Assert.AreEqual(tab["abc"].Number, 9);
+            Assert.AreEqual(tab["abc"].ToNumber(), 9);
         }
 
         using (bLuaValue fn = instance.GetGlobal("add_from_table"))
@@ -270,53 +270,53 @@ public class UnitTests : MonoBehaviour
             v.Set("b", bLuaValue.CreateNumber(instance, 5));
             v.Set("c", bLuaValue.CreateNumber(instance, 6));
             bLuaValue t = instance.Call(fn, v);
-            Assert.AreEqual(t.Number, 15);
+            Assert.AreEqual(t.ToNumber(), 15);
         }
 
         using (bLuaValue fn = bLuaValue.CreateFunction(instance, TestCFunction))
         {
-            Assert.AreEqual(instance.Call(fn).Number, 5);
+            Assert.AreEqual(instance.Call(fn).ToNumber(), 5);
         }
 
         using (bLuaValue fn = instance.GetGlobal("test_userdata"))
         {
             var userdata = bLuaValue.CreateUserData(instance, new TestUserDataClass() { n = 7 });
-            Assert.AreEqual(instance.Call(fn, userdata).Number, 40);
+            Assert.AreEqual(instance.Call(fn, userdata).ToNumber(), 40);
             using (bLuaValue fn2 = instance.GetGlobal("incr_userdata"))
             {
                 instance.Call(fn2, userdata);
-                Assert.AreEqual(instance.Call(fn, userdata).Number, 42);
+                Assert.AreEqual(instance.Call(fn, userdata).ToNumber(), 42);
             }
         }
 
         using (bLuaValue fn = instance.GetGlobal("test_addstrings"))
         {
             var userdata = bLuaValue.CreateUserData(instance, new TestUserDataClass() { n = 7 });
-            Assert.AreEqual(instance.Call(fn, userdata, "abc:", bLuaValue.CreateString(instance, "def")).String, "abc:def");
+            Assert.AreEqual(instance.Call(fn, userdata, "abc:", bLuaValue.CreateString(instance, "def")).ToString(), "abc:def");
         }
 
         using (bLuaValue fn = instance.GetGlobal("test_varargs"))
         {
             var userdata = bLuaValue.CreateUserData(instance, new TestUserDataClass() { n = 7 });
-            Assert.AreEqual(instance.Call(fn, userdata).Number, 20);
+            Assert.AreEqual(instance.Call(fn, userdata).ToNumber(), 20);
         }
 
         using (bLuaValue fn = instance.GetGlobal("test_field"))
         {
             var userdata = bLuaValue.CreateUserData(instance, new TestUserDataClass() { n = 7 });
-            Assert.AreEqual(instance.Call(fn, userdata).Number, 9.0);
+            Assert.AreEqual(instance.Call(fn, userdata).ToNumber(), 9.0);
         }
 
         using (bLuaValue fn = instance.GetGlobal("test_field"))
         {
             var userdata = bLuaValue.CreateUserData(instance, new TestUserDataClassDerived() { n = 7 });
-            Assert.AreEqual(instance.Call(fn, userdata).Number, 9.0);
+            Assert.AreEqual(instance.Call(fn, userdata).ToNumber(), 9.0);
         }
 
         using (bLuaValue fn = instance.GetGlobal("test_classproperty"))
         {
             var userdata = bLuaValue.CreateUserData(instance, new TestUserDataClassDerived() { n = 7 });
-            Assert.AreEqual(instance.Call(fn, userdata, 7.0).Number, 7.0);
+            Assert.AreEqual(instance.Call(fn, userdata, 7.0).ToNumber(), 7.0);
         }
 
         Assert.AreEqual(bLua.NativeLua.LuaLibAPI.lua_gettop(instance.state), stackSize);
@@ -352,7 +352,7 @@ public class UnitTests : MonoBehaviour
             instance.ResumeCoroutine(coroutine);
             await Task.Delay(2);
             instance.ResumeCoroutine(coroutine);
-            Assert.AreEqual(((TestUserDataClass)userdata.Object).n, 99);
+            Assert.AreEqual(userdata.ToUserData<TestUserDataClass>().n, 99);
         }
         
         Debug.Log("Finished Async Unit Tests");
@@ -420,7 +420,7 @@ public class UnitTests : MonoBehaviour
 
     public static int TestCFunction(IntPtr state)
     {
-        bLua.NativeLua.Lua.PushOntoStack(bLuaInstance.GetInstanceByState(bLua.NativeLua.Lua.GetMainThread(state)), 5);
+        bLua.NativeLua.Lua.PushObject(bLuaInstance.GetInstanceByState(bLua.NativeLua.Lua.GetMainThread(state)), 5);
         return 1;
     }
 }

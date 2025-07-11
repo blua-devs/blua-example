@@ -52,7 +52,7 @@ namespace bLua.JSON
 
 		public static string BLuaTableToJSON(bLuaValue _value)
 		{
-			if (!_value.IsTable() || !IsCompatible(_value))
+			if (_value.luaType != LuaType.Table || !IsCompatible(_value))
 			{
 				return nullString;
 			}
@@ -102,22 +102,22 @@ namespace bLua.JSON
 
 		private static void BLuaValueToJSON(StringBuilder _sb, bLuaValue _value)
 		{
-			if (_value.IsTable())
+			if (_value.luaType == LuaType.Table)
 			{
 				BLuaTableToJSON(_sb, _value);
             }
 			else
 			{
-				switch (_value.Type)
+				switch (_value.luaType)
 				{
-					case DataType.Boolean:
-						_sb.Append(_value.Boolean ? boolTrue : boolFalse);
+					case LuaType.Boolean:
+						_sb.Append(_value.ToBool() ? boolTrue : boolFalse);
 						break;
-					case DataType.String:
-						_sb.Append(StringToJSON(_value.String ?? ""));
+					case LuaType.String:
+						_sb.Append(StringToJSON(_value.ToString() ?? ""));
 						break;
-					case DataType.Number:
-						_sb.Append(_value.Number.ToString("r"));
+					case LuaType.Number:
+						_sb.Append(_value.ToNumber().ToString("r"));
 						break;
 					default:
 						_sb.Append(nullString);
@@ -128,11 +128,12 @@ namespace bLua.JSON
 
 		private static void BLuaTableToJSON(StringBuilder _sb, bLuaValue _table)
 		{
-			if (_table.Length > 0)
+			int tableLength = _table.GetTableLength();
+			if (tableLength > 0)
 			{
 				_sb.Append(beginArray);
-				bLuaValue[] arrayEntries = _table.List().ToArray();
-				for (int i = 0; i < _table.Length; i++)
+				bLuaValue[] arrayEntries = _table.ToList().ToArray();
+				for (int i = 0; i < tableLength; i++)
 				{
 					if (i > 0)
 					{
@@ -150,13 +151,13 @@ namespace bLua.JSON
                 }
 				_sb.Append(endArray);
 			}
-			else if (_table.Pairs().Count > 0)
+			else if (_table.GetDictionaryPairs().Count > 0)
 			{
 				_sb.Append(beginTable);
-				bLuaValue.Pair[] pairs = _table.Pairs().ToArray();
+				bLuaValue.bLuaValuePair[] pairs = _table.GetDictionaryPairs().ToArray();
 				for (int i = 0; i < pairs.Length; i++)
 				{
-					if (pairs[i].Key.Type == DataType.String)
+					if (pairs[i].Key.luaType == LuaType.String)
 					{
 						if (i > 0)
 						{
@@ -463,10 +464,10 @@ namespace bLua.JSON
 		private static bool IsCompatible(bLuaValue _value)
 		{
 			return _value.IsNil()
-				|| _value.Type == DataType.Boolean
-				|| _value.Type == DataType.String
-				|| _value.Type == DataType.Number
-				|| _value.Type == DataType.Table;
+				|| _value.luaType == LuaType.Boolean
+				|| _value.luaType == LuaType.String
+				|| _value.luaType == LuaType.Number
+				|| _value.luaType == LuaType.Table;
 		}
 	}
 } // bLua.JSON namespace
