@@ -960,7 +960,8 @@ namespace bLua.NativeLua
         public static LuaThreadStatus InvokeCSharpMethod(bLuaInstance _instance, IntPtr _state, MethodCallInfo _methodCallInfo, object _liveObject, params object[] _args)
         {
             // If the method is async, yield the coroutine, pause the coroutine, and only resume + unpause when the async method has completed
-            if ((typeof(Task).IsAssignableFrom(_methodCallInfo.methodInfo.ReturnType) || _methodCallInfo.methodInfo.GetCustomAttribute<AsyncStateMachineAttribute>() != null)
+            if (typeof(Task).IsAssignableFrom(_methodCallInfo.methodInfo.ReturnType)
+                && _methodCallInfo.methodInfo.GetCustomAttributes(typeof(AsyncStateMachineAttribute), false).Any()
                 && _instance.GetIsFeatureEnabled(Features.Coroutines)
                 && IsYieldable(_state))
             {
@@ -977,14 +978,15 @@ namespace bLua.NativeLua
                     Type returnValueType = returnValue.GetType();
                     if (typeof(Task).IsAssignableFrom(returnValueType))
                     {
+                        object[] taskReturnValues = new object[0];
+                        
                         PropertyInfo taskTypeResultPropertyInfo = returnValueType.GetProperty("Result");
                         if (taskTypeResultPropertyInfo != null)
                         {
                             object taskReturnValue = taskTypeResultPropertyInfo.GetValue(returnValue);
-                            object[] taskReturnValues;
 
                             Type taskReturnType = taskReturnValue.GetType();
-                            if (taskReturnType.IsTuple()) // If type is Task<T1, T2, ...> (aka Task<Tuple<T1, T2, ...>>)
+                            if (taskReturnType.IsTuple())
                             {
                                 FieldInfo[] fieldInfos = taskReturnType.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
                                 taskReturnValues = new object[fieldInfos.Length];
@@ -993,15 +995,15 @@ namespace bLua.NativeLua
                                     taskReturnValues[i] = fieldInfos[i].GetValue(taskReturnValue);
                                 }
                             }
-                            else
+                            else if (taskReturnType.ToUserDataType(_instance) != UserDataType.Void)
                             {
                                 taskReturnValues = new object[] { taskReturnValue };
                             }
-                            
-                            // Resume the thread and pass in any return values from the C# function
-                            ResumeThread(_instance, _state, _state, taskReturnValues);
-                            return;
                         }
+                        
+                        // Resume the thread and pass in any return values from the C# function
+                        ResumeThread(_instance, _state, _state, taskReturnValues);
+                        return;
                     }
                     
                     // Resume without passing any return values
