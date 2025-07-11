@@ -302,19 +302,19 @@ public class Benchmark : MonoBehaviour
         {
             double ns = result.timeElapsed * 1000000.0;
             ns /= result.iterations;
-            return $"Benchmark: ({result.interpreter}) {result.testName} did {result.iterations} in {result.timeElapsed}ms; {string.Format("{0:n0}", (int)ns)}ns(nanosecond)/iteration";
+            return $"Benchmark: ({result.interpreter}) {result.testName} did {result.iterations} in {result.timeElapsed}ms; {string.Format("{0:F2}", ns)}ns(nanosecond)/iteration";
         }
         else if (result.iterations >= 1000)
         {
             double us = result.timeElapsed * 1000.0;
             us /= result.iterations;
-            return $"Benchmark: ({result.interpreter}) {result.testName} did {result.iterations} in {result.timeElapsed}ms; {string.Format("{0:n0}", (int)us)}us(microsecond)/iteration";
+            return $"Benchmark: ({result.interpreter}) {result.testName} did {result.iterations} in {result.timeElapsed}ms; {string.Format("{0:F2}", us)}us(microsecond)/iteration";
         }
         else
         {
             double ms = result.timeElapsed;
             ms /= result.iterations;
-            return $"Benchmark: ({result.interpreter}) {result.testName} did {result.iterations} in {result.timeElapsed}ms; {string.Format("{0:n0}", (int)ms)}ms(millisecond)/iteration";
+            return $"Benchmark: ({result.interpreter}) {result.testName} did {result.iterations} in {result.timeElapsed}ms; {string.Format("{0:F2}", ms)}ms(millisecond)/iteration";
         }
     }
 }
