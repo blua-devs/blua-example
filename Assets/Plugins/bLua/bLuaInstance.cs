@@ -315,8 +315,8 @@ namespace bLua
     {
         public readonly bLuaSettings settings = new();
 
-        public UnityEvent<bLuaValue[]> OnPrint = new();
-        public UnityEvent<string, string> OnError = new();
+        public UnityEvent<bLuaValue[]> OnPrint { get; private set; } = new();
+        public UnityEvent<string, string> OnError { get; private set; } = new();
 
         /// <summary>
         /// Contains the current Lua state.
@@ -597,7 +597,7 @@ namespace bLua
         /// <summary>
         /// This event is called whenever bLua ticks. Allows for bLua features (or developers) to listen for when ticking takes place.
         /// </summary>
-        public UnityEvent OnTick = new();
+        public UnityEvent OnTick { get; private set; } = new();
 
         private bool ticking;
         private bool requestStartTicking;
@@ -648,13 +648,13 @@ namespace bLua
             OnTick?.Invoke();
         }
 
-        public void StartTicking()
+        private void StartTicking()
         {
             Tick();
             requestStartTicking = true;
         }
 
-        public void StopTicking()
+        private void StopTicking()
         {
             requestStopTicking = true;
         }
@@ -699,30 +699,30 @@ namespace bLua
                 return null;
             }
 
-            bLuaValue coroutineValue = CreateCoroutine(_fn, out IntPtr coroutineState);
+            bLuaValue coroutineValue = CreateCoroutine(_fn);
             
             ResumeCoroutine(coroutineValue, _args);
 
             return coroutineValue;
         }
 
-        public bLuaValue CreateCoroutine(bLuaValue _fn, out IntPtr _coroutineState)
+        public bLuaValue CreateCoroutine(bLuaValue _fn)
         {
-            _coroutineState = Lua.NewThread(state);
+            IntPtr coroutineState = Lua.NewThread(state);
 
             // Copy the coroutine thread and pop a reference
             LuaLibAPI.lua_pushvalue(state, -1);
             int coroutineRefId = LuaXLibAPI.luaL_ref(state, Lua.LUA_REGISTRYINDEX);
 
             Lua.PushValue(state, _fn); // Push the function we want to call to the main stack
-            LuaLibAPI.lua_xmove(state, _coroutineState, 1); // Move the function to the coroutine state
+            LuaLibAPI.lua_xmove(state, coroutineState, 1); // Move the function to the coroutine state
             
             bLuaValue coroutineValue = new bLuaValue(this, coroutineRefId);
             
             // Track the created coroutine
             LuaCoroutine coroutine = new LuaCoroutine()
             {
-                state = _coroutineState,
+                state = coroutineState,
                 refId = coroutineValue.referenceId
             };
             coroutines.Add(coroutine);
@@ -824,7 +824,7 @@ namespace bLua
             }
         }
 
-        public void StartGarbageCollecting()
+        private void StartGarbageCollecting()
         {
             if (!GetIsFeatureEnabled(Features.CSharpGarbageCollection))
             {
@@ -848,7 +848,7 @@ namespace bLua
             requestStartGarbageCollecting = true;
         }
 
-        public void StopGarbageCollecting()
+        private void StopGarbageCollecting()
         {
             requestStopGarbageCollecting = true;
         }
@@ -919,6 +919,7 @@ namespace bLua
 
             ErrorFromCSharp($"{_prependedErrorInfo}{ex.Message}", $"{ex.StackTrace}");
         }
+        
         public void ErrorFromCSharp(string _message, string _cSharpStackTrace = null)
         {
             string luaStackTrace = Lua.TraceMessage(this);
@@ -1074,7 +1075,7 @@ namespace bLua
 
         private bLuaValue bLuaInternal_CoroutineCreate([bLuaParam_State] IntPtr _state, bLuaValue _fn)
         {
-            return CreateCoroutine(_fn, out IntPtr coroutineState);
+            return CreateCoroutine(_fn);
         }
         
         private void bLuaInternal_CoroutineYield([bLuaParam_State] IntPtr _state)
@@ -1157,10 +1158,10 @@ namespace bLua
 #region Static
         private static Dictionary<IntPtr, bLuaInstance> instanceRegistry = new();
 
-        public static ProfilerMarker profile_luaGC = new("Lua.GC");
-        public static ProfilerMarker profile_luaCo = new("Lua.Coroutine");
-        public static ProfilerMarker profile_luaCall = new("Lua.Call");
-        public static ProfilerMarker profile_luaCallInner = new("Lua.CallInner");
+        private static ProfilerMarker profile_luaGC = new("Lua.GC");
+        private static ProfilerMarker profile_luaCo = new("Lua.Coroutine");
+        private static ProfilerMarker profile_luaCall = new("Lua.Call");
+        private static ProfilerMarker profile_luaCallInner = new("Lua.CallInner");
         
         
         public static bLuaInstance GetInstanceByState(IntPtr _state)

@@ -15,7 +15,7 @@ namespace bLua
         }
 
 
-        public int referenceId { get; protected set; } = NOREF;
+        public int referenceId { get; private set; } = NOREF;
 
         public LuaType luaType
         {
@@ -30,7 +30,7 @@ namespace bLua
 
                 return __type;
             }
-            protected set
+            private set
             {
                 __type = value;
             }
@@ -208,6 +208,7 @@ namespace bLua
                     return 0.0f;
             }
         }
+        
         public override string ToString()
         {
             LuaType pushedLuaType = (LuaType)Lua.PushValue(instance, this);
