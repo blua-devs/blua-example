@@ -365,6 +365,13 @@ public class UnitTests : MonoBehaviour
             features = bLuaSettings.SANDBOX_ALL,
             internalVerbosity = bLuaSettings.InternalErrorVerbosity.Verbose
         });
+        
+        instance.OnPrint.AddListener(args => {
+            foreach (bLuaValue arg in args)
+            {
+                Debug.Log(arg.ToString());
+            }
+        });
 
         Debug.Log("Starting Test Coroutine");
 
@@ -379,7 +386,12 @@ public class UnitTests : MonoBehaviour
 
         using (bLuaValue fn = instance.GetGlobal("testYield"))
         {
-            instance.CallAsCoroutine(fn, 5);
+            int numYields = 5;
+            bLuaValue coroutine = instance.CallAsCoroutine(fn, numYields);
+            for (int i = 0; i < numYields; i++)
+            {
+                instance.ResumeCoroutine(coroutine);
+            }
         }
     }
 
@@ -388,33 +400,38 @@ public class UnitTests : MonoBehaviour
         bLuaInstance instance = new bLuaInstance(new bLuaSettings()
         {
             features = bLuaSettings.SANDBOX_ALL,
-            internalVerbosity = bLuaSettings.InternalErrorVerbosity.Verbose
+            internalVerbosity = bLuaSettings.InternalErrorVerbosity.Verbose,
+            coroutineBehaviour = bLuaSettings.CoroutineBehaviour.ResumeOnTick
         });
-
+        
+        instance.OnPrint.AddListener(args => {
+            foreach (bLuaValue arg in args)
+            {
+                Debug.Log(arg.ToString());
+            }
+        });
+        
         Debug.Log("Starting Thread Macros");
 
         instance.ExecBuffer("test_macros",
             @"function testMacros(x)
                 print('I print first')
-                delay(2, function()
-                    print('I print third')
-                end)
-                spawn(function()
+                coroutine.spawn(function()
                     printStringAfter('I print second', 1)
                 end)
-                wait(x)
+                coroutine.wait(x)
                 print('I print last')
                 print('Finished Thread Macros')
             end
 
             function printStringAfter(s, t)
-                wait(t)
+                coroutine.wait(t)
                 print(s)
             end");
 
         using (bLuaValue fn = instance.GetGlobal("testMacros"))
         {
-            instance.CallAsCoroutine(fn, 3);
+            instance.CallAsCoroutine(fn, 2);
         }
     }
 
