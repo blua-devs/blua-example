@@ -180,8 +180,7 @@ public class UnitTests : MonoBehaviour
 
         int stackSize = bLua.NativeLua.LuaLibAPI.lua_gettop(instance.state);
 
-        instance.ExecBuffer("unit_tests",
-            @"MyFunctions = {}
+        instance.DoString(@"MyFunctions = {}
 
             function MyFunctions.blah(y)
                 return y
@@ -240,7 +239,8 @@ public class UnitTests : MonoBehaviour
 
             function test_classproperty(x, n)
                 return x.Create(n).n
-            end");
+            end",
+            "unit_tests");
 
         using (bLuaValue fn = instance.GetGlobal("myfunction"))
         {
@@ -338,11 +338,11 @@ public class UnitTests : MonoBehaviour
 
         int stackSize = bLua.NativeLua.LuaLibAPI.lua_gettop(instance.state);
 
-        instance.ExecBuffer("unit_tests",
-            @"function test_async(x, a)
+        instance.DoString(@"function test_async(x, a)
                 x:AsyncFunction(x.n)
                 x.n = x.StaticAsyncFunctionWithReturn(a)
-            end");
+            end",
+            "unit_tests");
         
         using (bLuaValue fn = instance.GetGlobal("test_async"))
         {
@@ -375,14 +375,14 @@ public class UnitTests : MonoBehaviour
 
         Debug.Log("Starting Test Coroutine");
 
-        instance.ExecBuffer("test_coroutine",
-            @"function testYield(x)
+        instance.DoString(@"function testYield(x)
                 for i=1,x do
                     print('test coroutine ' .. i)
                     coroutine.yield()
                 end
                 print('Finished Test Coroutine')
-            end");
+            end",
+            "test_coroutine");
 
         using (bLuaValue fn = instance.GetGlobal("testYield"))
         {
@@ -413,8 +413,7 @@ public class UnitTests : MonoBehaviour
         
         Debug.Log("Starting Thread Macros");
 
-        instance.ExecBuffer("test_macros",
-            @"function testMacros(x)
+        instance.DoString(@"function testMacros(x)
                 print('I print first')
                 coroutine.spawn(function()
                     printStringAfter('I print second', 1)
@@ -427,7 +426,8 @@ public class UnitTests : MonoBehaviour
             function printStringAfter(s, t)
                 coroutine.wait(t)
                 print(s)
-            end");
+            end",
+            "test_macros");
 
         using (bLuaValue fn = instance.GetGlobal("testMacros"))
         {

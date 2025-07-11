@@ -347,6 +347,8 @@ namespace bLua
             }
         }
 
+        private const string unnamedChunkName = "anonymous";
+        
         private const string luaConst_bluaInternalError = "blua_internal_error";
         private const string luaConst_bluaInternalCoroutine = "blua_internal_coroutine";
         private const string luaConst_bluaInternalCoroutineCreate = "blua_internal_coroutine_create";
@@ -447,12 +449,12 @@ namespace bLua
                 SetGlobal<Func<IntPtr, bLuaValue, bLuaValue[], bool>>(luaConst_bluaInternalCoroutineResume, bLuaInternal_CoroutineResume);
                 SetGlobal<Action<IntPtr>>(luaConst_bluaInternalCoroutineYield, bLuaInternal_CoroutineYield);
                 
-                DoBuffer(luaConst_bluaInternalCoroutine, 
-                    $@"coroutine.create = {luaConst_bluaInternalCoroutineCreate}
+                DoString($@"coroutine.create = {luaConst_bluaInternalCoroutineCreate}
                     coroutine.resume = function(fn, ...)
                         {luaConst_bluaInternalCoroutineResume}(fn, {"{...}"})
                     end
-                    coroutine.yield = {luaConst_bluaInternalCoroutineYield}");
+                    coroutine.yield = {luaConst_bluaInternalCoroutineYield}",
+                    luaConst_bluaInternalCoroutine);
             }
 
             if (GetIsFeatureEnabled(Features.Packages))
@@ -508,26 +510,27 @@ namespace bLua
                 SetGlobal<Func<IntPtr, float, Task>>(luaConst_bluaInternalWait, bLuaInternal_Wait);
                 SetGlobal<Func<IntPtr, bLuaValue, bLuaValue[], bLuaValue>>(luaConst_bluaInternalSpawn, bLuaInternal_Spawn);
                 
-                DoBuffer(luaConst_bluaInternalCoroutineMacros,
-                    @$"coroutine.wait = {luaConst_bluaInternalWait}
+                DoString(@$"coroutine.wait = {luaConst_bluaInternalWait}
                     coroutine.spawn = function(fn, ...)
                         return {luaConst_bluaInternalSpawn}(fn, {"{...}"})
-                    end");
+                    end",
+                    luaConst_bluaInternalCoroutineMacros);
             }
 
             if (GetIsFeatureEnabled(Features.CSharpPrintOverride))
             {
                 SetGlobal<Action<bLuaValue[]>>(luaConst_bluaInternalPrintNew, bLuaInternal_Print);
                 
-                DoBuffer(luaConst_bluaInternalPrint,
-                    @$"print = function(...)
+                DoString(@$"print = function(...)
                         return {luaConst_bluaInternalPrintNew}({"{...}"})
-                    end");
+                    end",
+                    luaConst_bluaInternalPrint);
             }
 
             if (GetIsFeatureEnabled(Features.CSharpGarbageCollection))
             {
-                internalLua_collectGarbage = DoBuffer(luaConst_bluaInternalCollectGarbage, @"return function() collectgarbage() end");
+                internalLua_collectGarbage = DoString(@"return function() collectgarbage() end",
+                    luaConst_bluaInternalCollectGarbage);
                 StartGarbageCollecting();
             }
 #endregion // Feature Handling
@@ -925,41 +928,47 @@ namespace bLua
 #endregion // Errors
 
         /// <summary>
-        /// Loads a string of Lua code and runs it.
+        /// Loads the given string as a Lua chunk and runs it.
         /// </summary>
-        /// <param name="_code"> The string of code to run </param>
-        public bLuaValue DoString(string _code, bLuaValue _environment = null)
+        /// <param name="_name"> The chunk name, used for debug information and error messages </param>
+        /// <param name="_code"> The Lua code to load </param>
+        public bLuaValue DoString(string _code, string _name = unnamedChunkName, bLuaValue _environment = null)
         {
-            return DoBuffer("code", _code, _environment);
+            LoadString(_code, _name, _environment);
+            
+            using (profile_luaCallInner.Auto())
+            {
+                int result = LuaLibAPI.lua_pcallk(state, 0, 1, 0, 0, IntPtr.Zero);
+                
+                if (result != 0)
+                {
+                    string error = Lua.GetString(state, -1);
+                    Lua.Pop(state, 1);
+                    ErrorFromLua($"{bLuaError.error_inBuffer}", $"{bLuaError.error_stackTracebackPrepend}{error}");
+                    return null;
+                }
+                
+                return Lua.PopValue(this);
+            }
         }
 
         /// <summary>
-        /// Loads a buffer as a Lua chunk and runs it.
+        /// Loads the given string as a Lua chunk. This function only loads the chunk; it does not run it.
         /// </summary>
+        /// <param name="_code"> The Lua code to load </param>
         /// <param name="_name"> The chunk name, used for debug information and error messages </param>
-        /// <param name="_text"> The Lua code to load </param>
-        public bLuaValue DoBuffer(string _name, string _text, bLuaValue _environment = null)
-        {
-            ExecBuffer(_name, _text, 1, _environment);
-            return Lua.PopValue(this);
-        }
-
-        /// <summary>
-        /// Loads a buffer as a Lua chunk and runs it.
-        /// </summary>
-        /// <param name="_name"> The chunk name, used for debug information and error messages </param>
-        /// <param name="_text"> The Lua code to load </param>
-        public void ExecBuffer(string _name, string _text, int _nresults = 0, bLuaValue _environment = null)
+        /// <param name="_environment"> The table to use as this chunk's global table </param> 
+        public void LoadString(string _code, string _name = unnamedChunkName, bLuaValue _environment = null)
         {
             if (!initialized)
             {
-                Debug.LogError("Attempt to ExecBuffer when instance is not initialized.");
+                Debug.LogError($"Attempt to {nameof(LoadString)} when instance is not initialized.");
                 return;
             }
 
             using (profile_luaCall.Auto())
             {
-                int result = LuaXLibAPI.luaL_loadbufferx(state, _text, (ulong)_text.Length, _name, null); // S: (buffer)
+                int result = LuaXLibAPI.luaL_loadbufferx(state, _code, (ulong)_code.Length, _name, null);
                 if (result != 0)
                 {
                     string error = Lua.GetString(state, -1);
@@ -976,19 +985,6 @@ namespace bLua
                     LuaLibAPI.lua_setfield(state, -2, Lua.StringToIntPtr("__index")); // Sets the stack at index to the -1 stack index's value, and pops the value
                     LuaLibAPI.lua_setmetatable(state, -2); // Pops -1 stack index and sets it to the stack value at index
                     LuaLibAPI.lua_setupvalue(state, -2, 1); // Assigns -1 stack index to the upvalue for value in stack at index
-                }
-
-                using (profile_luaCallInner.Auto())
-                {
-                    result = LuaLibAPI.lua_pcallk(state, 0, _nresults, 0, 0, IntPtr.Zero);
-                }
-
-                if (result != 0)
-                {
-                    string error = Lua.GetString(state, -1);
-                    Lua.Pop(state, 1);
-                    ErrorFromLua($"{bLuaError.error_inBuffer}", $"{bLuaError.error_stackTracebackPrepend}{error}");
-                    return;
                 }
             }
         }

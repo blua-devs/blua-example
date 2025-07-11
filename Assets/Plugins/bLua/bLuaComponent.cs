@@ -145,7 +145,7 @@ public class bLuaComponent : MonoBehaviour
     {
         if (!ranCode)
         {
-            instance.DoBuffer(chunkName, code, environment);
+            instance.DoString(code, chunkName, environment);
             ranCode = true;
         }
     }
