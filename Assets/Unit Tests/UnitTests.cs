@@ -3,6 +3,7 @@ using UnityEngine.Assertions;
 using UnityEngine;
 using bLua;
 using System;
+using System.Threading.Tasks;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -11,11 +12,17 @@ using UnityEditor;
 public class TestUserDataClass
 {
     public int n = 4;
+    
     public int MyFunction(int x = 5)
     {
         return n + x;
     }
 
+    public static void Print(string s)
+    {
+        Debug.Log(s);
+    }
+    
     public static TestUserDataClass Create(int x)
     {
         return new TestUserDataClass()
@@ -41,10 +48,10 @@ public class TestUserDataClass
 
     public int VarArgsParamsFunction(int a, params object[] b)
     {
-        Debug.Log($"VarArgs: {b.Length}");
+        Print($"{nameof(VarArgsParamsFunction)}: {b.Length}");
         foreach (var v in b)
         {
-            Debug.Log($"VarArgs: Type {v.GetType().Name}");
+            Print($"{nameof(VarArgsParamsFunction)}: Type {v.GetType().Name}");
         }
 
         return 0;
@@ -53,6 +60,18 @@ public class TestUserDataClass
     public static int StaticFunction(bLuaValue a, int b = 2, int c = 2)
     {
         return a.Integer + b + c;
+    }
+
+    public async Task AsyncFunction(int a)
+    {
+        await Task.Delay(a);
+        Print($"{nameof(AsyncFunction)}: Complete");
+    }
+
+    public static async Task<int> StaticAsyncFunctionWithReturn(int a)
+    {
+        await Task.Delay(a);
+        return 99;
     }
 
     public int propertyTest
@@ -303,6 +322,40 @@ public class UnitTests : MonoBehaviour
         Assert.AreEqual(bLua.NativeLua.LuaLibAPI.lua_gettop(instance.state), stackSize);
         
         Debug.Log("Finished Unit Tests");
+        
+        RunAsyncUnitTests();
+    }
+    
+    public async void RunAsyncUnitTests()
+    {
+        bLuaInstance instance = new bLuaInstance(new bLuaSettings()
+        {
+            features = bLuaSettings.SANDBOX_ALL,
+            internalVerbosity = bLuaSettings.InternalErrorVerbosity.Verbose
+        });
+
+        Debug.Log("Starting Async Unit Tests");
+
+        int stackSize = bLua.NativeLua.LuaLibAPI.lua_gettop(instance.state);
+
+        instance.ExecBuffer("unit_tests",
+            @"function test_async(x, a)
+                x:AsyncFunction(x.n)
+                x.n = x.StaticAsyncFunctionWithReturn(a)
+            end");
+        
+        using (bLuaValue fn = instance.GetGlobal("test_async"))
+        {
+            var userdata = bLuaValue.CreateUserData(instance, new TestUserDataClass() { n = 98 });
+            bLuaValue coroutine = instance.CallAsCoroutine(fn, userdata, 1);
+            await Task.Delay(2);
+            instance.ResumeCoroutine(coroutine);
+            await Task.Delay(2);
+            instance.ResumeCoroutine(coroutine);
+            Assert.AreEqual(((TestUserDataClass)userdata.Object).n, 99);
+        }
+        
+        Debug.Log("Finished Async Unit Tests");
     }
 
     public void RunTestCoroutine()
