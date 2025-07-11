@@ -312,7 +312,7 @@ namespace bLua.NativeLua
                     LuaLibAPI.lua_pushboolean(_state, objectBool ? 1 : 0);
                     break;
                 case string objectString:
-                    LuaLibAPI.lua_pushstring(_state, objectString);
+                    LuaLibAPI.lua_pushlstring(_state, StringToIntPtr(objectString), (ulong)StrToUTF8(objectString).Length);
                     break;
                 case LuaCFunction objectFunction:
                     LuaPushCFunction(_instance, _state, objectFunction);
