@@ -808,16 +808,14 @@ namespace bLua.NativeLua
                     return 0;
                 }
 
-                if (!GetLiveObjectUpvalue(_state, mainThreadInstance, out object liveObject))
-                {
-                    return 0;
-                }
-
                 if (!PopStackIntoArgs(mainThreadInstance, info, out object[] args, 1))
                 {
                     mainThreadInstance.ErrorFromCSharp($"{bLuaError.error_inFunctionCall}nil");
                     return 0;
                 }
+
+                bLuaValue liveObjectValue = PopStackIntoValue(mainThreadInstance);
+                object liveObject = liveObjectValue.Object;
                 
                 return (int)InvokeCSharpMethod(mainThreadInstance, _state, info, liveObject, args);
             }
@@ -966,6 +964,11 @@ namespace bLua.NativeLua
                 return globalMethodCallInfo.methodInfo.Invoke(globalMethodCallInfo.objectInstance, _args);
             }
             
+            if (_methodCallInfo.methodInfo.IsStatic)
+            {
+                return _methodCallInfo.methodInfo.Invoke(null, _args);
+            }
+            
             return _methodCallInfo.methodInfo.Invoke(_liveObject, _args);
         }
         
@@ -1059,7 +1062,7 @@ namespace bLua.NativeLua
             {
                 if (parms != null)
                 {
-                    parms[parmsIndex--] = PopStackIntoValue(_instance);
+                    parms[parmsIndex--] = PopStackIntoObject(_instance);
                 }
                 else
                 {
