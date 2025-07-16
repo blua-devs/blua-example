@@ -20,17 +20,12 @@ public class bLuaComponentEditor : Editor
             bLuaComponent component = target as bLuaComponent;
             if (component != null)
             {
-                if (!component.HasRanCode())
+                if (!component.ranCode)
                 {
                     if (GUILayout.Button("Run Code"))
                     {
                         component.RunCode();
                     }                    
-                }
-                
-                if (GUILayout.Button("Hot Reload"))
-                {
-                    component.HotReload();
                 }
             }
         }
@@ -38,9 +33,39 @@ public class bLuaComponentEditor : Editor
 }
 #endif // UNITY_EDITOR
 
-public class bLuaComponent : MonoBehaviour
+public static class bLuaGlobal
 {
     public static bLuaInstance instance;
+
+    
+    static bLuaGlobal()
+    {
+        bLuaSettings settings = new bLuaSettings()
+        {
+            features = bLuaSettings.SANDBOX_ALL,
+            tickBehavior = bLuaSettings.TickBehavior.TickAtInterval,
+            coroutineBehaviour = bLuaSettings.CoroutineBehaviour.ResumeOnTick
+        };
+        
+        instance = new bLuaInstance(settings);
+        
+        instance.OnPrint.AddListener(OnLuaPrint);
+    }
+
+    
+    private static void OnLuaPrint(bLuaValue[] args)
+    {
+        string log = "";
+        foreach (bLuaValue arg in args)
+        {
+            log += arg.ToString();
+        }
+        Debug.Log(log);
+    }
+}
+
+public class bLuaComponent : MonoBehaviour
+{
     private bLuaValue environment;
 
     /// <summary>
@@ -65,41 +90,17 @@ public class bLuaComponent : MonoBehaviour
     [SerializeField]
     [TextArea(2, 512)]
     private string code;
-
+    
+    public bool ranCode { get; private set; }
+    
 
     private void Awake()
     {
-        if (instance == null)
-        {
-            instance = new bLuaInstance(new bLuaSettings()
-            {
-                features = bLuaSettings.SANDBOX_ALL_EXPERIMENTAL,
-                tickBehavior = bLuaSettings.TickBehavior.Manual, // We tick the instance on Update
-                coroutineBehaviour = bLuaSettings.CoroutineBehaviour.ResumeOnTick // We resume all coroutines on Tick
-            });
-            
-            // Override print to log in Unity
-            instance.OnPrint.AddListener(args =>
-            {
-                string print = "";
-                
-                foreach (bLuaValue arg in args)
-                {
-                    print += arg.ToString();
-                }
-                
-                Debug.Log(print);
-            });
-        }
-
-        if (environment == null)
-        {
-            // Set up the global environment with any properties and functions we want
-            environment = bLuaValue.CreateTable(instance);
-            environment.Set("Vector3", new bLuaVector3Library());
-            environment.Set("GameObject", new bLuaGameObjectLibrary());
-            environment.Set("gameObject", new bLuaGameObject(gameObject));
-        }
+        // Set up the global environment with any properties and functions we want
+        environment = bLuaValue.CreateTable(bLuaGlobal.instance);
+        environment.Set("Vector3", new bLuaVector3Library());
+        environment.Set("GameObject", new bLuaGameObjectLibrary());
+        environment.Set("gameObject", new bLuaGameObject(gameObject));
     }
 
     private void Start()
@@ -117,8 +118,6 @@ public class bLuaComponent : MonoBehaviour
 
     private void Update()
     {
-        instance.ManualTick();
-
         if (runMonoBehaviourEvents)
         {
             RunEvent("Update");
@@ -134,25 +133,13 @@ public class bLuaComponent : MonoBehaviour
     }
 
 
-    public void HotReload()
-    {
-        ranCode = false;
-        RunCode();
-    }
-
-    private bool ranCode;
     public void RunCode()
     {
         if (!ranCode)
         {
-            instance.DoString(code, chunkName, environment);
+            bLuaGlobal.instance.DoString(code, chunkName, environment);
             ranCode = true;
         }
-    }
-
-    public bool HasRanCode()
-    {
-        return ranCode;
     }
 
     public void RunEvent(string _name)
@@ -163,7 +150,7 @@ public class bLuaComponent : MonoBehaviour
             if (func != null
                 && func.luaType == LuaType.Function)
             {
-                instance.CallAsCoroutine(func);
+                bLuaGlobal.instance.CallAsCoroutine(func);
             }
         }
     }
